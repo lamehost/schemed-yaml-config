@@ -1,0 +1,31 @@
+title: Configuration
+type: object
+properties:
+  listen:
+    type: object
+    properties: 
+      host:
+        type: string
+        default: localhost
+        description: Host to bind to
+        oneOf:
+          - format: hostname
+          - format: ipv4
+          - format: ipv6
+      port:
+        type: number
+        default : 8080
+        description: Port to bind to
+        minimum: 0
+        maximum: 65535
+    required: 
+      - host
+      - port
+    additionalProperties: False
+  tmpdir:
+    type: string
+    default: /tmp/
+required:
+  - listen
+  - tmpdir
+additionalProperties: False

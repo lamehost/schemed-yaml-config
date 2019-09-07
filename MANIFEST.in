@@ -1,0 +1,4 @@
+include *.md
+include LICENSE
+include requirements.txt
+recursive-include schemed_yaml_config *.py

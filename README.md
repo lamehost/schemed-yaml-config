@@ -1,0 +1,27 @@
+# Schemed YAML Config
+Schemed YAML Config is a library to read and validate [YAML](https://yaml.org/) based configuration files against [JSON Schema](https://json-schema.org/) specifications.  
+
+# Under the hood
+Schemed YAML Config works by converting YAML files into a dictionarie by mean of the well known [PyYAML framework](https://pyyaml.org/) and then by applying JSON Schema specifications before of returning it to rest of the script.  
+The beauty of this approach is it combines the human friendly serialization of YAML with the power of JSON Schema.
+
+A few tricks has been added to make the library even more human friendly. For instance when the a configuration file is missing and a default is created, order and comments of the keys from the schema are borrowed to the YAML file.
+
+# Synopsis
+```
+Python 3.7.4 (default, Aug 21 2019, 16:01:23) 
+[GCC 9.2.1 20190813] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+>>>
+>>> from schemed_yaml_config import get_config()
+>>> config = get_config('basic_config.yml', 'basic_schema.yml')
+>>> print(config)
+{'listen': {'host': '192.0.2.1', 'port': 1025}, 'tmpdir': '/tmp'}
+>>>
+```
+
+# Python compatibility
+Tested with:
+ - Python 2.7.15
+ - Python 3.7.4
+
