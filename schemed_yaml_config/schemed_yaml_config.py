@@ -90,7 +90,11 @@ def get_defaults(schema, with_description=False):
         #     (k, get_defaults(v)) for k, v in schema['properties'].items()
         # )
         result = OrderedDict()
-        for key, val in schema['properties'].items():
+        try:
+            items = schema['properties'].items()
+        except KeyError:
+            items = schema['patternProperties'].items()
+        for key, val in items:
             if with_description:
                 try:
                     pos = 0
