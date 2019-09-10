@@ -22,7 +22,7 @@
 
 
 """
-Configuration directives for the package.
+Main file for the package
 """
 
 
@@ -154,6 +154,7 @@ def keys_to_lower(item):
 def get_config(
         configuration_filename='config.yml',
         schema_filename='config_schema.yml',
+        create_default=True,
         lower_keys=True
     ):
     """
@@ -164,6 +165,7 @@ def get_config(
     Args:
         configuration_filename: name of the YAML configuration file
         schema_filename: name of the JSONSchema file
+        create_default: create default filename if missing
         lower_keys: transform keys to uppercase
     Returns:
         dict: configuration statements
@@ -198,9 +200,10 @@ def get_config(
 
         # Dump config to file
         try:
-            with open(configuration_filename, 'w') as stream:
-                stream.write(content)
-                print('Created configuration file: %s' % configuration_filename)
+            if create_default:
+                with open(configuration_filename, 'w') as stream:
+                    stream.write(content)
+                    print('Created configuration file: %s' % configuration_filename)
         except IOError:
             raise IOError('Unable to create configuration file: %s' % configuration_filename)
 
