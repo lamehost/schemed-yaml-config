@@ -15,7 +15,7 @@ Python 3.7.4 (default, Aug 21 2019, 16:01:23)
 [GCC 9.2.1 20190813] on linux
 Type "help", "copyright", "credits" or "license" for more information.
 >>>
->>> from schemed_yaml_config import get_config()
+>>> from schemed_yaml_config import get_config
 >>> config = get_config('basic_config.yml', 'basic_schema.yml')
 >>> print(config)
 {'listen': {'host': '192.0.2.1', 'port': 1025}, 'tmpdir': '/tmp'}
