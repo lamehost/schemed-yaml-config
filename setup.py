@@ -55,5 +55,6 @@ setup(
     install_requires=REQS,
     include_package_data=True,
     long_description=README,
+    long_description_content_type='text/markdown',
     zip_safe=False
 )
