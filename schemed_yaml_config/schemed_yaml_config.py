@@ -83,12 +83,9 @@ def get_defaults(schema, with_description=False):
     except KeyError:
         return result
     except TypeError:
-        raise SyntaxError('Error while parsing configuration file: "type" keyword missing at %s')
+        raise SyntaxError('Error while parsing configuration file: "type" keyword missing')
 
     if _type == 'object':
-        # result = dict(
-        #     (k, get_defaults(v)) for k, v in schema['properties'].items()
-        # )
         result = OrderedDict()
         try:
             items = schema['properties'].items()
