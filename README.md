@@ -1,6 +1,12 @@
 # Schemed YAML Config
 Schemed YAML Config is a library to read and validate [YAML](https://yaml.org/) based configuration files against [JSON Schema](https://json-schema.org/) specifications.  
 
+# Install
+Schemed-yaml-config can be installed via PIP
+```
+# pip install schemed-yaml-config
+```
+
 # Under the hood
 Schemed YAML Config works by converting YAML files into a dictionarie by mean of the well known [PyYAML framework](https://pyyaml.org/) and then by applying JSON Schema specifications before of returning it to rest of the script.  
 The beauty of this approach is it combines the human friendly serialization of YAML with the power of JSON Schema.
