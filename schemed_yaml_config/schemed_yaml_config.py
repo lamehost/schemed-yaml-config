@@ -83,7 +83,7 @@ def get_defaults(schema, with_description=False):
     except KeyError:
         return result
     except TypeError:
-        raise SyntaxError('Error while parsing configuration file: "type" keyword missing')
+        raise SyntaxError('Error while parsing configuration file: "type" keyword missing in:\n %s' % yaml.dump(schema))
 
     if _type == 'object':
         result = OrderedDict()
@@ -214,7 +214,7 @@ def get_config(
     error = best_match(DefaultValidatingDraft4Validator(configschema).iter_errors(config))
     if error:
         if error.path:
-            path = '/'.join(error.relative_path)
+            path = '/'.join([str(relative_path) for relative_path in error.relative_path])
             raise SyntaxError(
                 'Error while parsing configuration file, not a valid value for: %s' % path
             )
