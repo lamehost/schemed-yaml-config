@@ -83,7 +83,7 @@ def get_defaults(schema, with_description=False):
     except KeyError:
         return result
     except TypeError:
-        raise SyntaxError('Error while parsing configuration file: "type" keyword missing in:\n %s' % yaml.dump(schema))
+        raise SyntaxError('Error while parsing configuration file: "type" keyword missing')
 
     if _type == 'object':
         result = OrderedDict()
@@ -102,7 +102,10 @@ def get_defaults(schema, with_description=False):
                     pass
             result[key] = get_defaults(val, with_description)
     elif _type == 'array':
-        result = [get_defaults(schema['items'], with_description)]
+        try:
+            result = schema['default']
+        except KeyError:
+            result = [get_defaults(schema['items'], with_description)]
     else:
         try:
             result = schema['default']
@@ -182,7 +185,23 @@ def get_config(
         with open(configuration_filename, 'r') as stream:
             defaults = get_defaults(configschema)
             config = yaml.load(stream, Loader=yaml.FullLoader) or {}
-            config = updatedict(defaults, config)
+            def import_defaults(config, defaults):
+                if isinstance(config, dict):
+                    for key, val in config.items():
+                        try:
+                            config[key] = import_defaults(val, defaults[key])
+                        except KeyError:
+                            pass
+                    for key, val in defaults.items():
+                        if key not in config:
+                            config[key] =  val
+                elif isinstance(config, list):
+                    try:
+                        config = [import_defaults(item, next(iter(defaults))) for item in config]
+                    except StopIteration:
+                        pass
+                return config
+            config = import_defaults(config, defaults)
             if lower_keys:
                 config = keys_to_lower(config)
     else:
@@ -214,9 +233,9 @@ def get_config(
     error = best_match(DefaultValidatingDraft4Validator(configschema).iter_errors(config))
     if error:
         if error.path:
-            path = '/'.join([str(relative_path) for relative_path in error.relative_path])
+            path = '/'.join([str(_) for _ in error.relative_path])
             raise SyntaxError(
-                'Error while parsing configuration file, not a valid value for: %s' % path
+                'Error while parsing configuration file.\n  Message: %s\n  Path: %s' % (error.message, path)
             )
         raise SyntaxError('Error while parsing configuration file: %s' % error.message)
 
