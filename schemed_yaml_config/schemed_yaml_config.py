@@ -110,7 +110,7 @@ def get_defaults(schema, with_description=False):
         try:
             result = schema['default']
         except KeyError:
-            result = result
+            pass
 
     return result
 
@@ -194,7 +194,7 @@ def get_config(
                             pass
                     for key, val in defaults.items():
                         if key not in config:
-                            config[key] =  val
+                            config[key] = val
                 elif isinstance(config, list):
                     try:
                         config = [import_defaults(item, next(iter(defaults))) for item in config]
@@ -235,7 +235,9 @@ def get_config(
         if error.path:
             path = '/'.join([str(_) for _ in error.relative_path])
             raise SyntaxError(
-                'Error while parsing configuration file.\n  Message: %s\n  Path: %s' % (error.message, path)
+                'Error while parsing configuration file.\n  Message: %s\n  Path: %s' % (
+                    error.message, path
+                )
             )
         raise SyntaxError('Error while parsing configuration file: %s' % error.message)
 
