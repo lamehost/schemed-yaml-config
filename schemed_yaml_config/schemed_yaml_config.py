@@ -192,9 +192,13 @@ def get_config(
                             config[key] = import_defaults(val, defaults[key])
                         except KeyError:
                             pass
-                    for key, val in defaults.items():
-                        if key not in config:
-                            config[key] = val
+                        except TypeError:
+                            pass
+                    if isinstance(defaults, OrderedDict):
+                        for key, val in defaults.items():
+                            if key not in config:
+                                config[key] =  val
+
                 elif isinstance(config, list):
                     try:
                         config = [import_defaults(item, next(iter(defaults))) for item in config]
