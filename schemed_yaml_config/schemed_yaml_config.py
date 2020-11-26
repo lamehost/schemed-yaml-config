@@ -54,9 +54,10 @@ def extend_with_default(validator_class):
         """
         Function to set default values
         """
-        for _property, subschema in properties.items():
-            if "default" in subschema:
-                instance.setdefault(_property, subschema["default"])
+        if hasattr(instance, "setdefault"):
+            for _property, subschema in properties.items():
+                if "default" in subschema:
+                    instance.setdefault(_property, subschema["default"])
 
         for error in validate_properties(validator, properties, instance, schema):
             yield error
