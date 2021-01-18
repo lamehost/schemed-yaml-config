@@ -91,7 +91,7 @@ def get_defaults(schema, with_description=False):
         try:
             items = schema['properties'].items()
         except KeyError:
-            items = schema['patternProperties'].items()
+            items = []
         for key, val in items:
             if with_description:
                 try:
