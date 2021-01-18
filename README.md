@@ -29,5 +29,4 @@ Type "help", "copyright", "credits" or "license" for more information.
 ```
 
 # TOML
-Despite its name Schemed YAML Config also supports [TOML](https://toml.io/en/) configuration files as experimental feature since version 0.1.0.  
-TOML schemas are not supported yet!
+Despite its name Schemed YAML Config also supports [TOML](https://toml.io/en/) configuration files as experimental feature since [v0.1.0](https://github.com/lamehost/schemed-yaml-config/releases/tag/v0.1.0). TOML schemas are not supported yet!
