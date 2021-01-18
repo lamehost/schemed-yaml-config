@@ -15,21 +15,19 @@ The beauty of this approach is it combines the human friendly serialization of Y
 
 A few tricks has been added to make the library even more human friendly. For instance when the a configuration file is missing and a default is created, order and comments of the keys from the schema are borrowed to the YAML file.
 
-# Synopsis
+# Syntax
 ```
-Python 3.7.4 (default, Aug 21 2019, 16:01:23) 
+Python 3.7.4 (default, Aug 21 2019, 16:01:23)
 [GCC 9.2.1 20190813] on linux
 Type "help", "copyright", "credits" or "license" for more information.
 >>>
 >>> from schemed_yaml_config import get_config
->>> config = get_config('basic_config.yml', 'basic_schema.yml')
+>>> config = get_config('config.yml', 'schema.yml')
 >>> print(config)
 {'listen': {'host': '192.0.2.1', 'port': 1025}, 'tmpdir': '/tmp'}
 >>>
 ```
 
-# Python compatibility
-Tested with:
- - Python 2.7.15
- - Python 3.7.4
-
+# TOML
+Despite its name Schemed YAML Config also supports [TOML](https://toml.io/en/) configuration files as experimental feature since version 0.1.0.  
+TOML schemas are not supported yet!

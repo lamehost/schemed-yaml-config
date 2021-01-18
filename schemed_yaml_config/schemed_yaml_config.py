@@ -41,6 +41,8 @@ import yaml
 import yamlordereddictloader
 yaml.add_representer(OrderedDict, yaml.representer.Representer.represent_dict)
 
+import toml
+
 
 def extend_with_default(validator_class):
     """
@@ -160,7 +162,8 @@ def get_config(
         configuration_filename='config.yml',
         schema_filename='config_schema.yml',
         create_default=True,
-        lower_keys=True
+        lower_keys=True,
+        language='yaml'
     ):
     """
     Gets default config and overwrite it with the content of configuration_filename.
@@ -172,9 +175,15 @@ def get_config(
         schema_filename: name of the JSONSchema file
         create_default: create default filename if missing
         lower_keys: transform keys to uppercase
+        language: Markup language of the file (either 'YAML' or 'TOML')
     Returns:
         dict: configuration statements
     """
+
+    _ = str(language).upper()
+    if _ not in ['YAML', 'TOML']:
+        raise SyntaxError('Unsupported markup language: %s' % _)
+    language = _
 
     with open(schema_filename) as stream:
         try:
@@ -185,7 +194,10 @@ def get_config(
     if os.path.exists(configuration_filename):
         with open(configuration_filename, 'r') as stream:
             defaults = get_defaults(configschema)
-            config = yaml.load(stream, Loader=yaml.FullLoader) or {}
+            if language == "YAML":
+                config = yaml.load(stream, Loader=yaml.FullLoader) or {}
+            else:
+                config = toml.load(stream)
             def import_defaults(config, defaults):
                 if isinstance(config, dict):
                     for key, val in config.items():
@@ -212,16 +224,26 @@ def get_config(
     else:
         # Read defaults and include descriptions
         config = get_defaults(configschema, with_description=True)
-        content = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
-
-        # Transform key preceding description lines to "# "
-        content = content.splitlines()
-        for _ in range(len(content)):
-            content[_] = re.sub(r"- __description_\S+: '(.*)'", r"  # \1", content[_])
-            content[_] = re.sub(r"__description_\S+: '(.*)'", r"# \1", content[_])
-            content[_] = re.sub(r"- __description_\S+: ", "  # ", content[_])
-            content[_] = re.sub(r"__description_\S+: ", "# ", content[_])
-        content = '\n'.join(content) + '\n'
+        if language == 'YAML':
+            content = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
+            # Transform key preceding description lines to "# "
+            content = content.splitlines()
+            for _ in range(len(content)):
+                content[_] = re.sub(r"- __description_\S+: '(.*)'", r"  # \1", content[_])
+                content[_] = re.sub(r"__description_\S+: '(.*)'", r"# \1", content[_])
+                content[_] = re.sub(r"- __description_\S+: ", "  # ", content[_])
+                content[_] = re.sub(r"__description_\S+: ", "# ", content[_])
+            content = '\n'.join(content) + '\n'
+        else:
+            content = toml.dumps(config)
+            # Transform key preceding description lines to "# "
+            content = content.splitlines()
+            for _ in range(len(content)):
+                content[_] = re.sub(r"- __description_\S+ = '(.*)'", r"  # \1", content[_])
+                content[_] = re.sub(r"__description_\S+ = '(.*)'", r"# \1", content[_])
+                content[_] = re.sub(r"- __description_\S+ =  ", "  # ", content[_])
+                content[_] = re.sub(r"__description_\S+ = ", "# ", content[_])
+            content = '\n'.join(content) + '\n'
 
         # Dump config to file
         try:

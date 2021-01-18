@@ -22,7 +22,7 @@
 
 """Provides module metadata"""
 
-__version__ = "0.0.7"
+__version__ = "0.1.0"
 __author__ = "Marco Marzetti"
 __author_email__ = "marco@lamehost.it"
 __url__ = "https://github.com/lamehost/schemed-yaml-config/"
@@ -33,6 +33,6 @@ __classifiers__ = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Topic :: System :: Configuration Files',
     'License :: OSI Approved :: MIT License',
-    'Programming Language :: Python :: 2.7',
-    'Programming Language :: Python :: 3.7'
+    'Programming Language :: Python :: 3.7',
+    'Programming Language :: Python :: 3.9'
 ]

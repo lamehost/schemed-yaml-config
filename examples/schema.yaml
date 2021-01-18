@@ -8,7 +8,7 @@ properties:
         type: string
         default: localhost
         description: Host to bind to
-        oneOf:
+        anyOf:
           - format: hostname
           - format: ipv4
           - format: ipv6

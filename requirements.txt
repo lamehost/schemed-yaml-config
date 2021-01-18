@@ -2,3 +2,4 @@ jsonschema==3.0.2
 PyYAML==5.1.2
 yamlordereddictloader==0.4.0
 yamlloader==0.5.5
+toml==0.10.2
