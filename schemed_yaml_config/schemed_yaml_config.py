@@ -44,33 +44,6 @@ yaml.add_representer(OrderedDict, yaml.representer.Representer.represent_dict)
 import toml
 
 
-def extend_with_default(validator_class):
-    """
-    Wrapper around jsonschema validator_class to add support for default values.
-    Returns:
-        Extended validator_class
-    """
-    validate_properties = validator_class.VALIDATORS["properties"]
-
-    def set_defaults(validator, properties, instance, schema):
-        """
-        Function to set default values
-        """
-        if hasattr(instance, "setdefault"):
-            for _property, subschema in properties.items():
-                if "default" in subschema:
-                    instance.setdefault(_property, subschema["default"])
-
-        for error in validate_properties(validator, properties, instance, schema):
-            yield error
-
-    return validators.extend(
-        validator_class, {"properties" : set_defaults},
-    )
-
-DefaultValidatingDraft7Validator = extend_with_default(Draft7Validator)
-
-
 def get_defaults(schema, with_description=False):
     """
     Gets default values from the schema
@@ -80,40 +53,96 @@ def get_defaults(schema, with_description=False):
     Returns:
         dict: dict with default values
     """
-    result = ""
-    try:
-        _type = schema['type']
-    except KeyError:
-        return result
-    except TypeError:
-        raise SyntaxError('Error while parsing configuration file: "type" keyword missing')
 
-    if _type == 'object':
-        result = OrderedDict()
-        try:
-            items = schema['properties'].items()
-        except KeyError:
-            items = []
-        for key, val in items:
-            if with_description:
+    def get_description_key():
+        return '__syc_description_prefix__%s' % uuid.uuid4()
+
+    def make_default(schema, with_description):
+        if "type" in schema:
+            if schema['type'] == 'object':
+                result = OrderedDict()
                 try:
-                    pos = 0
-                    for _ in schema['properties'][key]['description'].splitlines():
-                        result['__description__%s_%d' % (key, pos)] = _
-                        pos = pos + 1
+                    items = schema['properties'].items()
                 except KeyError:
+                    items = []
+                for key, val in items:
+                    if "anyOf" in val:
+                        val = next(iter(val['anyOf']))
+                    elif "oneOf" in val:
+                        val = next(iter(val['oneOf']))
+                    if with_description:
+                        try:
+                            description_key = get_description_key()
+                            result[description_key] = val['description']
+                        except (TypeError, KeyError):
+                            pass
+                    try:
+                        result[key] = get_defaults(val, with_description)
+                    except SyntaxError:
+                        print(error)
+            elif schema['type'] == 'array':
+                result = []
+
+                if "anyOf" in schema['items']:
+                    val = next(iter(schema['items']['anyOf']))
+                elif "oneOf" in schema['items']:
+                    val = next(iter(schema['items']['oneOf']))
+                else:
+                    val = schema['items']
+
+                try:
+                    result = [get_defaults(val, with_description)]
+                except SyntaxError:
                     pass
-            result[key] = get_defaults(val, with_description)
-    elif _type == 'array':
-        try:
-            result = schema['default']
-        except KeyError:
-            result = [get_defaults(schema['items'], with_description)]
+
+                if with_description and 'description' in schema['items']:
+                    description_key = get_description_key()
+                    result = ["%s %s" % (description_key, schema['items']['description'])] + result
+            else:
+                if "anyOf" in schema:
+                    val = next(iter(schema['anyOf']))
+                elif "oneOf" in schema:
+                    val = next(iter(schema['oneOf']))
+                else:
+                    val = schema
+
+                try:
+                    result = val['default']
+                except (TypeError, KeyError) as error:
+                    raise SyntaxError(
+"""Error while parsing schema file
+  Message: "default" keyword missing
+  Schema: %s""" % schema
+                    ) from error
+        else:
+            raise SyntaxError(
+"""Error while parsing schema file.
+  Message: "type", "anyOf" or "oneOf" keywords missing
+  Schema: %s""" % schema
+            )
+
+        return result
+
+    # Always try to return user provided default and description first if default is available
+    if 'default' in schema:
+        default = schema['default']
     else:
-        try:
-            result = schema['default']
-        except KeyError:
-            pass
+        default = make_default(schema, with_description)
+
+    if isinstance(default, OrderedDict):
+        result = OrderedDict()
+        if with_description and 'description' in schema:
+            description_key = get_description_key()
+            result[description_key] = schema['description']
+        for key, value in default.items():
+            result[key] = value
+    elif isinstance(default, list):
+        result = default
+        if with_description and 'description' in schema:
+            description_key = get_description_key()
+            result = ["%s %s" % (description_key, schema['description'])] + result
+    else:
+        result = default
 
     return result
 
@@ -257,7 +286,7 @@ def get_config(
         # Reload defaults without descriptions
         config = get_defaults(configschema, with_description=False)
 
-    error = best_match(DefaultValidatingDraft7Validator(configschema).iter_errors(config))
+    error = best_match(Draft7Validator(configschema).iter_errors(config))
     if error:
         path = "Unknown"
         if error.path is not None:
