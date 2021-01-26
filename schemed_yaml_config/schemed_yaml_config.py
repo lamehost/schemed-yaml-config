@@ -352,7 +352,7 @@ def get_config(
 
     # Turn keys to lowercase if requested
     if lower_keys:
-         config = keys_to_lower(config)
+        config = keys_to_lower(config)
 
     # Reload defaults without descriptions
     config = get_defaults(configschema, with_description=False)
