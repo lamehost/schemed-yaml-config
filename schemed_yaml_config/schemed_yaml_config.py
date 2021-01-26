@@ -259,14 +259,16 @@ def get_config(
 
     error = best_match(DefaultValidatingDraft4Validator(configschema).iter_errors(config))
     if error:
-        if error.path:
-            path = '/'.join([str(_) for _ in error.relative_path])
-            raise SyntaxError(
-                'Error while parsing configuration file.\n  Message: %s\n  Path: %s' % (
-                    error.message, path
-                )
-            )
-        raise SyntaxError('Error while parsing configuration file: %s' % error.message)
+        path = "Unknown"
+        if error.path is not None:
+            path = '/' + '/'.join([str(_) for _ in error.relative_path])
+        elif error.parent is not None and error.parent.path is not None:
+            path = '/' + '/'.join([str(_) for _ in error.parent.relative_path])
 
+        raise SyntaxError(
+            'Error while parsing configuration file.\n  Message: %s\n  Path: %s' % (
+                error.message, path
+            )
+        )
 
     return config
