@@ -75,7 +75,8 @@ def get_defaults(schema, with_description=False):
                             pass
                     try:
                         result[key] = get_defaults(val, with_description)
-                    except SyntaxError:
+                    except SyntaxError as error:
+                        print(error)
             elif schema['type'] == 'array':
                 result = []
 
@@ -218,11 +219,11 @@ def get_config(
 
     if os.path.exists(configuration_filename):
         with open(configuration_filename, 'r') as stream:
-            defaults = get_defaults(configschema)
             if language == "YAML":
                 config = yaml.load(stream, Loader=yaml.FullLoader) or {}
             else:
                 config = toml.load(stream)
+
             def import_defaults(config, defaults):
                 if isinstance(config, dict):
                     for key, val in config.items():
@@ -243,44 +244,118 @@ def get_config(
                     except StopIteration:
                         pass
                 return config
+
+            # Get default values
+            defaults = get_defaults(configschema)
+
+            # Import default values into config
             config = import_defaults(config, defaults)
-            if lower_keys:
-                config = keys_to_lower(config)
-    else:
+    elif create_default:
         # Read defaults and include descriptions
-        config = get_defaults(configschema, with_description=True)
+        config = get_defaults(configschema, True)
+
+        # Handle YAML
         if language == 'YAML':
-            content = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
-            # Transform key preceding description lines to "# "
-            content = content.splitlines()
-            for _ in range(len(content)):
-                content[_] = re.sub(r"- __description_\S+: '(.*)'", r"  # \1", content[_])
-                content[_] = re.sub(r"__description_\S+: '(.*)'", r"# \1", content[_])
-                content[_] = re.sub(r"- __description_\S+: ", "  # ", content[_])
-                content[_] = re.sub(r"__description_\S+: ", "# ", content[_])
-            content = '\n'.join(content) + '\n'
+            text = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
+
+            # Handle descriptions
+            lines = list()
+            for line in text.splitlines():
+                new_line = re.sub(
+                    r"- __syc_description_prefix__\S+: '(.*)'", r"  # \1", line
+                )
+                if new_line != line:
+                    lines.append(new_line)
+                    continue
+
+                new_line = re.sub(
+                    r"- __syc_description_prefix__\S+: (.*)", r"  # \1", line
+                )
+                if new_line != line:
+                    lines.append(new_line)
+                    continue
+
+                new_line = re.sub(
+                    r"- __syc_description_prefix__\S+ (.+)", r"# \1", line
+                )
+                if new_line != line:
+                    lines.append(new_line)
+                    continue
+
+                new_line = re.sub(
+                    r"__syc_description_prefix__\S+: '(.*)'", r"# \1", line
+                )
+                if new_line != line:
+                    lines.append(new_line)
+                    continue
+
+                new_line = re.sub(
+                    r"__syc_description_prefix__\S+: (.*)", r"# \1", line
+                )
+                if new_line != line:
+                    lines.append(new_line)
+                    continue
+
+                lines.append(line)
+            text = '\n'.join(lines) + '\n'
         else:
-            content = toml.dumps(config)
-            # Transform key preceding description lines to "# "
-            content = content.splitlines()
-            for _ in range(len(content)):
-                content[_] = re.sub(r"- __description_\S+ = '(.*)'", r"  # \1", content[_])
-                content[_] = re.sub(r"__description_\S+ = '(.*)'", r"# \1", content[_])
-                content[_] = re.sub(r"- __description_\S+ =  ", "  # ", content[_])
-                content[_] = re.sub(r"__description_\S+ = ", "# ", content[_])
-            content = '\n'.join(content) + '\n'
+            text = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
+
+            # Handle descriptions
+            lines = list()
+            for line in text.splitlines():
+                new_line = re.sub(
+                    r"- __syc_description_prefix__\S+ = '(.*)'", r"  # \1", line
+                )
+                if new_line != line:
+                    lines.append(new_line)
+                    continue
+
+                new_line = re.sub(
+                    r"- __syc_description_prefix__\S+ = (.*)", r"  # \1", line
+                )
+                if new_line != line:
+                    lines.append(new_line)
+                    continue
+
+                new_line = re.sub(
+                    r"- __syc_description_prefix__\S+ (.+)", r"# \1", line
+                )
+                if new_line != line:
+                    lines.append(new_line)
+                    continue
+
+                new_line = re.sub(
+                    r"__syc_description_prefix__\S+ = '(.*)'", r"# \1", line
+                )
+                if new_line != line:
+                    lines.append(new_line)
+                    continue
+
+                new_line = re.sub(
+                    r"__syc_description_prefix__\S+ = (.*)", r"# \1", line
+                )
+                if new_line != line:
+                    lines.append(new_line)
+                    continue
+
+                lines.append(line)
+            text = '\n'.join(lines) + '\n'
 
         # Dump config to file
         try:
-            if create_default:
-                with open(configuration_filename, 'w') as stream:
-                    stream.write(content)
-                    print('Created configuration file: %s' % configuration_filename)
+            with open(configuration_filename, 'w') as stream:
+                stream.write(content)
+                print('Created configuration file: %s' % configuration_filename)
         except IOError:
             raise IOError('Unable to create configuration file: %s' % configuration_filename)
 
-        # Reload defaults without descriptions
-        config = get_defaults(configschema, with_description=False)
+    # Turn keys to lowercase if requested
+    if lower_keys:
+         config = keys_to_lower(config)
+
+    # Reload defaults without descriptions
+    config = get_defaults(configschema, with_description=False)
 
     error = best_match(Draft7Validator(configschema).iter_errors(config))
     if error:
