@@ -26,9 +26,6 @@ Main file for the package
 """
 
 
-from __future__ import absolute_import
-from __future__ import print_function
-
 import os
 import re
 
@@ -79,7 +76,6 @@ def get_defaults(schema, with_description=False):
                     try:
                         result[key] = get_defaults(val, with_description)
                     except SyntaxError:
-                        print(error)
             elif schema['type'] == 'array':
                 result = []
 
