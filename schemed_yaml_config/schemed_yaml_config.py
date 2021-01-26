@@ -34,7 +34,7 @@ import re
 
 from collections import OrderedDict
 
-from jsonschema import Draft4Validator, validators
+from jsonschema import Draft7Validator, validators
 from jsonschema.exceptions import best_match
 
 import yaml
@@ -68,7 +68,7 @@ def extend_with_default(validator_class):
         validator_class, {"properties" : set_defaults},
     )
 
-DefaultValidatingDraft4Validator = extend_with_default(Draft4Validator)
+DefaultValidatingDraft7Validator = extend_with_default(Draft7Validator)
 
 
 def get_defaults(schema, with_description=False):
@@ -257,7 +257,7 @@ def get_config(
         # Reload defaults without descriptions
         config = get_defaults(configschema, with_description=False)
 
-    error = best_match(DefaultValidatingDraft4Validator(configschema).iter_errors(config))
+    error = best_match(DefaultValidatingDraft7Validator(configschema).iter_errors(config))
     if error:
         path = "Unknown"
         if error.path is not None:
