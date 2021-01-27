@@ -147,6 +147,12 @@ def get_defaults(schema, with_description=False):
 
 
 def render_yaml(config):
+    """ Returns rendered config object in YAML format Args:
+        config: config object
+    Returns:
+        str: rendered text
+    """
+
     text = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
 
     # Handle descriptions
@@ -193,6 +199,12 @@ def render_yaml(config):
 
 
 def render_toml(config):
+    """ Returns rendered config object in TOML format Args:
+        config: config object
+    Returns:
+        str: rendered text
+    """
+
     text = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
 
     # Handle descriptions
