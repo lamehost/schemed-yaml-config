@@ -55,6 +55,11 @@ setup(
     install_requires=REQS,
     include_package_data=True,
     long_description=README,
+    entry_points={
+        'console_scripts': [
+            '%s = %s.__main__:main' % (NAME, 'schemed_yaml_config'),
+        ],
+    },
     long_description_content_type='text/markdown',
     zip_safe=False
 )
