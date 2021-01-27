@@ -25,20 +25,18 @@
 Main file for the package
 """
 
-
 import os
 import re
-
+import uuid
 from collections import OrderedDict
 
-from jsonschema import Draft7Validator, validators
+import toml
+from jsonschema import Draft7Validator
 from jsonschema.exceptions import best_match
 
 import yaml
 import yamlordereddictloader
 yaml.add_representer(OrderedDict, yaml.representer.Representer.represent_dict)
-
-import toml
 
 
 def get_defaults(schema, with_description=False):
@@ -64,9 +62,13 @@ def get_defaults(schema, with_description=False):
                     items = []
                 for key, val in items:
                     if "anyOf" in val:
-                        val = next(iter(val['anyOf']))
+                        for subkey, subval in next(iter(val['anyOf'])).items():
+                            if subkey not in val:
+                                val[subkey] = subval
                     elif "oneOf" in val:
-                        val = next(iter(val['oneOf']))
+                        for subkey, subval in next(iter(val['oneOf'])).items():
+                            if subkey not in val:
+                                val[subkey] = subval
                     if with_description:
                         try:
                             description_key = get_description_key()
@@ -144,6 +146,98 @@ def get_defaults(schema, with_description=False):
     return result
 
 
+def render_yaml(config):
+    text = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
+
+    # Handle descriptions
+    lines = list()
+    for line in text.splitlines():
+        new_line = re.sub(
+            r"- __syc_description_prefix__\S+: '(.*)'", r"  # \1", line
+        )
+        if new_line != line:
+            lines.append(new_line)
+            continue
+
+        new_line = re.sub(
+            r"- __syc_description_prefix__\S+: (.*)", r"  # \1", line
+        )
+        if new_line != line:
+            lines.append(new_line)
+            continue
+
+        new_line = re.sub(
+            r"- __syc_description_prefix__\S+ (.+)", r"# \1", line
+        )
+        if new_line != line:
+            lines.append(new_line)
+            continue
+
+        new_line = re.sub(
+            r"__syc_description_prefix__\S+: '(.*)'", r"# \1", line
+        )
+        if new_line != line:
+            lines.append(new_line)
+            continue
+
+        new_line = re.sub(
+            r"__syc_description_prefix__\S+: (.*)", r"# \1", line
+        )
+        if new_line != line:
+            lines.append(new_line)
+            continue
+
+        lines.append(line)
+    text = '\n'.join(lines) + '\n'
+    return text
+
+
+def render_toml(config):
+    text = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
+
+    # Handle descriptions
+    lines = list()
+    for line in text.splitlines():
+        new_line = re.sub(
+            r"- __syc_description_prefix__\S+ = '(.*)'", r"  # \1", line
+        )
+        if new_line != line:
+            lines.append(new_line)
+            continue
+
+        new_line = re.sub(
+            r"- __syc_description_prefix__\S+ = (.*)", r"  # \1", line
+        )
+        if new_line != line:
+            lines.append(new_line)
+            continue
+
+        new_line = re.sub(
+            r"- __syc_description_prefix__\S+ (.+)", r"# \1", line
+        )
+        if new_line != line:
+            lines.append(new_line)
+            continue
+
+        new_line = re.sub(
+            r"__syc_description_prefix__\S+ = '(.*)'", r"# \1", line
+        )
+        if new_line != line:
+            lines.append(new_line)
+            continue
+
+        new_line = re.sub(
+            r"__syc_description_prefix__\S+ = (.*)", r"# \1", line
+        )
+        if new_line != line:
+            lines.append(new_line)
+            continue
+
+        lines.append(line)
+    text = '\n'.join(lines) + '\n'
+    return text
+
+
 def updatedict(original, updates):
     """
     Updates the original dictionary with items in updates.
@@ -215,7 +309,7 @@ def get_config(
         try:
             configschema = yaml.load(stream, Loader=yamlordereddictloader.Loader)
         except (yaml.scanner.ScannerError) as error:
-            raise SyntaxError('Error while parsing configuration file: %s' % error)
+            raise SyntaxError('Error while parsing configuration file: %s' % error) from error
 
     if os.path.exists(configuration_filename):
         with open(configuration_filename, 'r') as stream:
@@ -254,101 +348,23 @@ def get_config(
         # Read defaults and include descriptions
         config = get_defaults(configschema, True)
 
-        # Handle YAML
+        # Render text
         if language == 'YAML':
-            text = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
-
-            # Handle descriptions
-            lines = list()
-            for line in text.splitlines():
-                new_line = re.sub(
-                    r"- __syc_description_prefix__\S+: '(.*)'", r"  # \1", line
-                )
-                if new_line != line:
-                    lines.append(new_line)
-                    continue
-
-                new_line = re.sub(
-                    r"- __syc_description_prefix__\S+: (.*)", r"  # \1", line
-                )
-                if new_line != line:
-                    lines.append(new_line)
-                    continue
-
-                new_line = re.sub(
-                    r"- __syc_description_prefix__\S+ (.+)", r"# \1", line
-                )
-                if new_line != line:
-                    lines.append(new_line)
-                    continue
-
-                new_line = re.sub(
-                    r"__syc_description_prefix__\S+: '(.*)'", r"# \1", line
-                )
-                if new_line != line:
-                    lines.append(new_line)
-                    continue
-
-                new_line = re.sub(
-                    r"__syc_description_prefix__\S+: (.*)", r"# \1", line
-                )
-                if new_line != line:
-                    lines.append(new_line)
-                    continue
-
-                lines.append(line)
-            text = '\n'.join(lines) + '\n'
+            text = render_yaml(config)
+        elif language == 'TOML':
+            text = render_toml(config)
         else:
-            text = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
-
-            # Handle descriptions
-            lines = list()
-            for line in text.splitlines():
-                new_line = re.sub(
-                    r"- __syc_description_prefix__\S+ = '(.*)'", r"  # \1", line
-                )
-                if new_line != line:
-                    lines.append(new_line)
-                    continue
-
-                new_line = re.sub(
-                    r"- __syc_description_prefix__\S+ = (.*)", r"  # \1", line
-                )
-                if new_line != line:
-                    lines.append(new_line)
-                    continue
-
-                new_line = re.sub(
-                    r"- __syc_description_prefix__\S+ (.+)", r"# \1", line
-                )
-                if new_line != line:
-                    lines.append(new_line)
-                    continue
-
-                new_line = re.sub(
-                    r"__syc_description_prefix__\S+ = '(.*)'", r"# \1", line
-                )
-                if new_line != line:
-                    lines.append(new_line)
-                    continue
-
-                new_line = re.sub(
-                    r"__syc_description_prefix__\S+ = (.*)", r"# \1", line
-                )
-                if new_line != line:
-                    lines.append(new_line)
-                    continue
-
-                lines.append(line)
-            text = '\n'.join(lines) + '\n'
+            text = ""
 
         # Dump config to file
         try:
             with open(configuration_filename, 'w') as stream:
-                stream.write(content)
+                stream.write(text)
                 print('Created configuration file: %s' % configuration_filename)
-        except IOError:
-            raise IOError('Unable to create configuration file: %s' % configuration_filename)
+        except IOError as error:
+            raise IOError(
+                'Unable to create configuration file: %s' % configuration_filename
+            ) from error
 
     # Turn keys to lowercase if requested
     if lower_keys:
