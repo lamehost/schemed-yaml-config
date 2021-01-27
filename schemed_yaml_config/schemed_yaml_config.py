@@ -78,7 +78,7 @@ def get_defaults(schema, with_description=False):
                     try:
                         result[key] = get_defaults(val, with_description)
                     except SyntaxError as error:
-                        print(error)
+                        pass
             elif schema['type'] == 'array':
                 result = []
 
@@ -91,12 +91,12 @@ def get_defaults(schema, with_description=False):
 
                 try:
                     result = [get_defaults(val, with_description)]
-                except SyntaxError:
+                except SyntaxError as error:
                     pass
 
-                if with_description and 'description' in schema['items']:
+                if with_description and 'description' in val['items']:
                     description_key = get_description_key()
-                    result = ["%s %s" % (description_key, schema['items']['description'])] + result
+                    result = ["%s %s" % (description_key, val['items']['description'])] + result
             else:
                 if "anyOf" in schema:
                     val = next(iter(schema['anyOf']))
@@ -111,13 +111,13 @@ def get_defaults(schema, with_description=False):
                     raise SyntaxError(
 """Error while parsing schema file
   Message: "default" keyword missing
-  Schema: %s""" % schema
+  Schema: %s""" % render_yaml(schema)
                     ) from error
         else:
             raise SyntaxError(
 """Error while parsing schema file.
   Message: "type", "anyOf" or "oneOf" keywords missing
-  Schema: %s""" % schema
+  Schema: %s""" % render_yaml(schema)
             )
 
         return result
@@ -322,6 +322,7 @@ def get_config(
             configschema = yaml.load(stream, Loader=yamlordereddictloader.Loader)
         except (yaml.scanner.ScannerError) as error:
             raise SyntaxError('Error while parsing configuration file: %s' % error) from error
+    validator = Draft7Validator(configschema)
 
     if os.path.exists(configuration_filename):
         with open(configuration_filename, 'r') as stream:
@@ -382,10 +383,8 @@ def get_config(
     if lower_keys:
         config = keys_to_lower(config)
 
-    # Reload defaults without descriptions
-    config = get_defaults(configschema, with_description=False)
-
-    error = best_match(Draft7Validator(configschema).iter_errors(config))
+    # Look for errors
+    error = best_match(validator.iter_errors(config))
     if error:
         path = "Unknown"
         if error.path is not None:
@@ -399,4 +398,5 @@ def get_config(
             )
         )
 
+    # Return config
     return config
