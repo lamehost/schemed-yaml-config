@@ -29,6 +29,7 @@ import os
 import re
 import uuid
 from collections import OrderedDict
+from copy import deepcopy
 
 import toml
 from jsonschema import Draft7Validator
@@ -123,23 +124,24 @@ def get_defaults(schema, with_description=False):
         return result
 
     # Always try to return user provided default and description first if default is available
-    if 'default' in schema:
-        default = schema['default']
+    _schema = deepcopy(schema)
+    if 'default' in _schema:
+        default = _schema['default']
     else:
-        default = make_default(schema, with_description)
+        default = make_default(_schema, with_description)
 
     if isinstance(default, OrderedDict):
         result = OrderedDict()
-        if with_description and 'description' in schema:
+        if with_description and 'description' in _schema:
             description_key = get_description_key()
-            result[description_key] = schema['description']
+            result[description_key] = _schema['description']
         for key, value in default.items():
             result[key] = value
     elif isinstance(default, list):
         result = default
-        if with_description and 'description' in schema:
+        if with_description and 'description' in _schema:
             description_key = get_description_key()
-            result = ["%s %s" % (description_key, schema['description'])] + result
+            result = ["%s %s" % (description_key, _schema['description'])] + result
     else:
         result = default
 
