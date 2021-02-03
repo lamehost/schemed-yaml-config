@@ -55,59 +55,91 @@ def get_defaults(schema, with_description=False):
 
     def make_default(schema, with_description):
         if "type" in schema:
+            # Parse objects
             if schema['type'] == 'object':
                 result = OrderedDict()
+                # Find all properties
                 try:
-                    items = schema['properties'].items()
+                    properties = list(schema['properties'].items())
                 except KeyError:
-                    items = []
-                for key, val in items:
-                    if "anyOf" in val:
-                        for subkey, subval in next(iter(val['anyOf'])).items():
-                            if subkey not in val:
-                                val[subkey] = subval
-                    elif "oneOf" in val:
-                        for subkey, subval in next(iter(val['oneOf'])).items():
-                            if subkey not in val:
-                                val[subkey] = subval
+                    properties = []
+
+                # Find all patternProperties
+                try:
+                    for pattern, value in schema['patternProperties'].items():
+                        # Compile regex so that we can use it later
+                        pattern = re.compile(pattern)
+                        properties.append([pattern, value])
+                except KeyError:
+                    pass
+
+                for _property, value in properties:
+                    # There can be multiple subschemas defined under anyOf and oneOf
+                    # We only take the first one in the list and we import key into schema
+                    # (only missing keys are imported).
+                    if "anyOf" in value:
+                        for subkey, subvalue in next(iter(value['anyOf'])).items():
+                            if subkey not in value:
+                                value[subkey] = subvalue
+                    elif "oneOf" in value:
+                        for subkey, subvalue in next(iter(value['oneOf'])).items():
+                            if subkey not in value:
+                                value[subkey] = subvalue
+
+                    # Try to import description
                     if with_description:
                         try:
                             description_key = get_description_key()
-                            result[description_key] = val['description']
+                            result[description_key] = value['description']
                         except (TypeError, KeyError):
                             pass
+
+                    # Run get_defaults over value
                     try:
-                        result[key] = get_defaults(val, with_description)
+                        result[_property] = get_defaults(value, with_description)
                     except SyntaxError as error:
+                        # No default value was found, thus we skip the key
                         pass
+            # Parse arrays
             elif schema['type'] == 'array':
                 result = []
-
+                # Every array has a items key that define the subschema
+                # There can be multiple subschemas defined under anyOf and oneOf
+                # We only take the first one in the list and we use it as subschema
                 if "anyOf" in schema['items']:
-                    val = next(iter(schema['items']['anyOf']))
+                    subschema = next(iter(schema['items']['anyOf']))
                 elif "oneOf" in schema['items']:
-                    val = next(iter(schema['items']['oneOf']))
+                    subschema = next(iter(schema['items']['oneOf']))
                 else:
-                    val = schema['items']
+                    subschema = schema['items']
 
                 try:
-                    result = [get_defaults(val, with_description)]
+                    result = [get_defaults(subschema, with_description)]
                 except SyntaxError as error:
+                    # No default value was found
                     pass
 
-                if with_description and 'description' in val['items']:
+                # Try to put description at the top of the list
+                if with_description and 'description' in subschema['items']:
                     description_key = get_description_key()
-                    result = ["%s %s" % (description_key, val['items']['description'])] + result
+                    result = [
+                        "%s %s" % (description_key, subschema['items']['description'])
+                    ] + result
+            # Fallback for all fo the other objects
             else:
+                # There can be a schema defined under every item
+                # And there can be multiple subschemas defined under anyOf and oneOf
+                # We only take the first one in the list and we use it as subschema
                 if "anyOf" in schema:
-                    val = next(iter(schema['anyOf']))
+                    subschema = next(iter(schema['anyOf']))
                 elif "oneOf" in schema:
-                    val = next(iter(schema['oneOf']))
+                    subschema = next(iter(schema['oneOf']))
                 else:
-                    val = schema
+                    subschema = schema
 
+                # Try to return default value
                 try:
-                    result = val['default']
+                    result = subschema['default']
                 except (TypeError, KeyError) as error:
                     raise SyntaxError(
 """Error while parsing schema file
@@ -123,13 +155,14 @@ def get_defaults(schema, with_description=False):
 
         return result
 
-    # Always try to return user provided default and description first if default is available
+    # If user defined default is not there, then create one
     _schema = deepcopy(schema)
     if 'default' in _schema:
         default = _schema['default']
     else:
         default = make_default(_schema, with_description)
 
+    # Import default and descriptions into result
     if isinstance(default, OrderedDict):
         result = OrderedDict()
         if with_description and 'description' in _schema:
@@ -335,23 +368,56 @@ def get_config(
 
             def import_defaults(config, defaults):
                 if isinstance(config, dict):
-                    for key, val in config.items():
+                    # Recursively import defaults into existing keys
+                    for key, value in config.items():
                         try:
-                            config[key] = import_defaults(val, defaults[key])
-                        except KeyError:
+                            config[key] = import_defaults(value, defaults[key])
+                        except (KeyError, TypeError):
                             pass
-                        except TypeError:
-                            pass
+
                     if isinstance(defaults, OrderedDict):
-                        for key, val in defaults.items():
-                            if key not in config:
-                                config[key] =  val
+                        # Recursively import defaults into keys that match with patterns
+                        for pattern, default in defaults.items():
+                            if not isinstance(pattern, re.Pattern):
+                                continue
+                            for key, value in config.items():
+                                if pattern.match(key):
+                                    config[key] = import_defaults(value, default)
+
+                        # Import missing keys
+                        for key, default in defaults.items():
+                            # Skip existing keys
+                            if key in config:
+                                continue
+                            # Skip patterns
+                            if isinstance(key, re.Pattern):
+                                continue
+
+                            # Remove patternPriorities keys from default
+                            def remove_patterns(tree):
+                                if not isinstance(tree, OrderedDict):
+                                    return tree
+
+                                clean_tree = OrderedDict()
+                                for _key, _val in tree.items():
+                                    if isinstance(_key, re.Pattern):
+                                        continue
+                                    if isinstance(_val, OrderedDict):
+                                        _val = remove_patterns(_val)
+                                    clean_tree[_key] = _val
+                                return clean_tree
+
+                            config[key] = remove_patterns(default)
 
                 elif isinstance(config, list):
                     try:
-                        config = [import_defaults(item, next(iter(defaults))) for item in config]
+                        config = [
+                            import_defaults(item, next(iter(defaults)))
+                            for item in config
+                        ]
                     except StopIteration:
                         pass
+
                 return config
 
             # Get default values
