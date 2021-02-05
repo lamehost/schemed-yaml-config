@@ -447,6 +447,9 @@ def get_config(
                 'Unable to create configuration file: %s' % configuration_filename
             ) from error
 
+        # Re-read defaults, this time do not include descriptions
+        config = get_defaults(configschema, False)
+
     # Turn keys to lowercase if requested
     if lower_keys:
         config = keys_to_lower(config)
