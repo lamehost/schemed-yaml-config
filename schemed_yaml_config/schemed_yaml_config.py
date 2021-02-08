@@ -40,6 +40,10 @@ import yamlordereddictloader
 yaml.add_representer(OrderedDict, yaml.representer.Representer.represent_dict)
 
 
+class NoAliasDumper(yaml.Dumper):
+    def ignore_aliases(self, data):
+        return True
+
 def get_defaults(schema, with_description=False):
     """
     Gets default values from the schema
@@ -188,7 +192,13 @@ def render_yaml(config):
         str: rendered text
     """
 
-    text = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
+    text = yaml.dump(
+        config,
+        default_flow_style=False,
+        sort_keys=False,
+        width=9999,
+        Dumper=NoAliasDumper
+        )
 
     # Handle descriptions
     lines = list()
