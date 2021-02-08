@@ -44,6 +44,7 @@ class NoAliasDumper(yaml.Dumper):
     def ignore_aliases(self, data):
         return True
 
+
 def get_defaults(schema, with_description=False):
     """
     Gets default values from the schema
@@ -198,7 +199,7 @@ def render_yaml(config):
         sort_keys=False,
         width=9999,
         Dumper=NoAliasDumper
-        )
+    )
 
     # Handle descriptions
     lines = list()
@@ -402,6 +403,10 @@ def get_config(
                             # Skip patterns
                             if isinstance(key, re.Pattern):
                                 continue
+
+                            # Always import list as emtpy lists
+                            if isinstance(default, list):
+                                default = []
 
                             # Remove patternPriorities keys from default
                             def remove_patterns(tree):
