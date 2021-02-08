@@ -251,7 +251,7 @@ def render_toml(config):
         str: rendered text
     """
 
-    text = yaml.dump(config, default_flow_style=False, sort_keys=False, width=9999)
+    text = yaml.dumps(config)
 
     # Handle descriptions
     lines = list()
