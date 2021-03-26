@@ -1,5 +1,5 @@
 jsonschema==3.0.2
-PyYAML==5.3.1
+PyYAML==5.4.1
 yamlordereddictloader==0.4.0
 yamlloader==0.5.5
 toml==0.10.2
