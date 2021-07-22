@@ -37,7 +37,13 @@ Example:
 
 from __future__ import absolute_import
 
-from .schemed_yaml_config import get_config, render_yaml, render_toml
+from .schemed_yaml_config import (
+    get_config,
+    read_config,
+    write_config,
+    render_yaml,
+    render_toml
+)
 
 from .__about__ import (
     __version__,
