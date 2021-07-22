@@ -443,25 +443,8 @@ def get_config(
     elif create_default:
         # Read defaults and include descriptions
         config = get_defaults(configschema, True)
-
-        # Render text
-        if language == 'YAML':
-            text = render_yaml(config)
-        elif language == 'TOML':
-            text = render_toml(config)
-        else:
-            text = ""
-
-        # Dump config to file
-        try:
-            with open(configuration_filename, 'w') as stream:
-                stream.write(text)
-                print('Created configuration file: %s' % configuration_filename)
-        except IOError as error:
-            raise IOError(
-                'Unable to create configuration file: %s' % configuration_filename
-            ) from error
-
+         # Dump config to file
+        write_config(config, configuration_filename)
         # Re-read defaults, this time do not include descriptions
         config = get_defaults(configschema, False)
 
@@ -486,3 +469,40 @@ def get_config(
 
     # Return config
     return config
+
+
+def read_config(*args, **kwargs):
+    """Alias of get_config()"""
+    return get_config(*args, **kwargs)
+
+
+def write_config(
+        config,
+        configuration_filename='config.yml',
+        language='yaml'
+    ):
+    """
+    Writes config to configuration_filename. If the file does not exist, it creates it.
+    Config can be validated before of being written.
+    Args:
+        config: config object
+        configuration_filename: name of the YAML configuration file (Default: config.yml)
+        create_default: create default filename if missing
+        language: Markup language of the file (either 'YAML' or 'TOML')
+    """
+
+    if language.lower() == 'yaml':
+        text = render_yaml(config)
+    elif language.lower() == 'toml':
+        text = render_toml(config)
+    else:
+        raise RuntimeError('Unsupported language: %s' % language)
+
+    # Dump config to file
+    try:
+        with open(configuration_filename, 'w') as stream:
+            stream.write(text)
+    except IOError as error:
+        raise IOError(
+            'Unable to create configuration file: %s' % configuration_filename
+        ) from error
