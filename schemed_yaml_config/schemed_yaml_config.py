@@ -97,7 +97,7 @@ class Config():
         )
 
         if config is None:
-            self.__config = empty_config
+            self.__config = deepcopy(self.__default_values)
         else:
             self.config = config
 
@@ -470,7 +470,6 @@ Schema: {self.__render_yaml(schema)}"""
                     try:
                         description_key = self.__generate_description_prefix()
                         default_values[description_key] = subschema['description']
-                        default_values.move_to_end(description_key, False)
                     except (TypeError, KeyError):
                         pass
 
