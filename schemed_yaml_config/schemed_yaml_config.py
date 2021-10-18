@@ -28,6 +28,7 @@ Main file for the package
 import re
 import uuid
 from collections import OrderedDict
+from copy import deepcopy
 
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import best_match
@@ -73,6 +74,9 @@ class Config():
                 raise SyntaxError(f'Error while parsing configuration file: {error}') from error
         self.validator = Draft7Validator(self.schema)
 
+        ### I hate this hack and i should find a more elegant way to handle it ###
+
+        # Get default config (includes comments)
         if self.schema['type'] == 'object':
             empty_config = OrderedDict()
         elif self.schema['type'] == 'array':
@@ -80,28 +84,25 @@ class Config():
         else:
             empty_config = None
 
-        ### I hate this hack and i should find a more elegant way to handle it ###
-
-        # Get default config (includes comments)
         default_values = self.__get_default_values(self.schema,  with_description=True)
         self.__default_config = self.__import_default_values(
-            config=empty_config,
+            config=deepcopy(empty_config),
             default_values=default_values
         )
 
-        # Get default values from schema
         default_values = self.__get_default_values(self.schema,  with_description=False)
         self.__default_values = self.__import_default_values(
-            config=empty_config,
+            config=deepcopy(empty_config),
             default_values=default_values
         )
+
+        if config is None:
+            self.__config = empty_config
+        else:
+            self.config = config
 
        ###########################################################################
 
-        if config is None:
-            self.config = empty_config
-        else:
-            self.config = config
 
     @staticmethod
     def __generate_description_prefix():
