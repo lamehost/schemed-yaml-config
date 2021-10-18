@@ -1,6 +1,6 @@
 # MIT License
 
-# Copyright (c) 2019, Marco Marzetti <marco@lamehost.it>
+# Copyright (c) 2021, Marco Marzetti <marco@lamehost.it>
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,484 +25,621 @@
 Main file for the package
 """
 
-import os
 import re
 import uuid
 from collections import OrderedDict
-from copy import deepcopy
 
-import toml
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import best_match
 
+import toml
 import yaml
 import yamlordereddictloader
 yaml.add_representer(OrderedDict, yaml.representer.Representer.represent_dict)
 
 
 class NoAliasDumper(yaml.Dumper):
+    """Wrapper around yaml.Dumper that statically disables aliases"""
     def ignore_aliases(self, data):
         return True
 
 
-def get_defaults(schema, with_description=False):
+class Config():
     """
-    Gets default values from the schema
-    Args:
-        schema: jsonschema
-        with_description: Wether or not include description from the schema
-    Returns:
-        dict: dict with default values
+    Validates configuration against the provided JSONSchema.
+
+    Parameters:
+    ----------
+        schema_filename: str
+            Name (along with path) of the file containting the jsonschema specification formatted
+            in YAML.
+        config: (str, list or dict)
+            Configuration object to be validated (default: None)
+        schema_subtree: str
+            List of schema object names or id joined by '/'
+            For instance /properties/listen/properties/.
+            Allow user to import just a part of the schema (default: False)
     """
+    def __init__(self, schema_filename, config=None, schema_subtree=False):
+        # Init Schema and Validator from schema_filename
+        with open(schema_filename, encoding="utf-8") as stream:
+            try:
+                self.schema = yaml.load(stream, Loader=yamlordereddictloader.Loader)
+                # Allow user to consume just a substree in the schema file
+                if schema_subtree:
+                    for key in schema_subtree.split('/'):
+                        self.schema = self.schema[key]
+            except (yaml.scanner.ScannerError) as error:
+                raise SyntaxError(f'Error while parsing configuration file: {error}') from error
+        self.validator = Draft7Validator(self.schema)
 
-    def get_description_key():
-        return '__syc_description_prefix__%s' % uuid.uuid4()
-
-    def make_default(schema, with_description):
-        if "type" in schema:
-            # Parse objects
-            if schema['type'] == 'object':
-                result = OrderedDict()
-                # Find all properties
-                try:
-                    properties = list(schema['properties'].items())
-                except KeyError:
-                    properties = []
-
-                # Find all patternProperties
-                try:
-                    for pattern, value in schema['patternProperties'].items():
-                        # Compile regex so that we can use it later
-                        pattern = re.compile(pattern)
-                        properties.append([pattern, value])
-                except KeyError:
-                    pass
-
-                for _property, value in properties:
-                    # There can be multiple subschemas defined under anyOf and oneOf
-                    # We only take the first one in the list and we import key into schema
-                    # (only missing keys are imported).
-                    if "anyOf" in value:
-                        for subkey, subvalue in next(iter(value['anyOf'])).items():
-                            if subkey not in value:
-                                value[subkey] = subvalue
-                    elif "oneOf" in value:
-                        for subkey, subvalue in next(iter(value['oneOf'])).items():
-                            if subkey not in value:
-                                value[subkey] = subvalue
-
-                    # Try to import description
-                    if with_description:
-                        try:
-                            description_key = get_description_key()
-                            result[description_key] = value['description']
-                        except (TypeError, KeyError):
-                            pass
-
-                    # Run get_defaults over value
-                    try:
-                        result[_property] = get_defaults(value, with_description)
-                    except SyntaxError as error:
-                        # No default value was found, thus we skip the key
-                        pass
-            # Parse arrays
-            elif schema['type'] == 'array':
-                result = []
-                # Every array has a items key that define the subschema
-                # There can be multiple subschemas defined under anyOf and oneOf
-                # We only take the first one in the list and we use it as subschema
-                if "anyOf" in schema['items']:
-                    subschema = next(iter(schema['items']['anyOf']))
-                elif "oneOf" in schema['items']:
-                    subschema = next(iter(schema['items']['oneOf']))
-                else:
-                    subschema = schema['items']
-
-                try:
-                    result = [get_defaults(subschema, with_description)]
-                except SyntaxError as error:
-                    # No default value was found
-                    pass
-
-                # Try to put description at the top of the list
-                if with_description and 'description' in subschema['items']:
-                    description_key = get_description_key()
-                    result = [
-                        "%s %s" % (description_key, subschema['items']['description'])
-                    ] + result
-            # Fallback for all fo the other objects
-            else:
-                # There can be a schema defined under every item
-                # And there can be multiple subschemas defined under anyOf and oneOf
-                # We only take the first one in the list and we use it as subschema
-                if "anyOf" in schema:
-                    subschema = next(iter(schema['anyOf']))
-                elif "oneOf" in schema:
-                    subschema = next(iter(schema['oneOf']))
-                else:
-                    subschema = schema
-
-                # Try to return default value
-                try:
-                    result = subschema['default']
-                except (TypeError, KeyError) as error:
-                    raise SyntaxError(
-"""Error while parsing schema file
-  Message: "default" keyword missing
-  Schema: %s""" % render_yaml(schema)
-                    ) from error
+        if self.schema['type'] == 'object':
+            empty_config = OrderedDict()
+        elif self.schema['type'] == 'array':
+            empty_config = []
         else:
-            raise SyntaxError(
-"""Error while parsing schema file.
-  Message: "type", "anyOf" or "oneOf" keywords missing
-  Schema: %s""" % render_yaml(schema)
+            empty_config = None
+
+        ### I hate this hack and i should find a more elegant way to handle it ###
+
+        # Get default config (includes comments)
+        default_values = self.__get_default_values(self.schema,  with_description=True)
+        self.__default_config = self.__import_default_values(
+            config=empty_config,
+            default_values=default_values
+        )
+
+        # Get default values from schema
+        default_values = self.__get_default_values(self.schema,  with_description=False)
+        self.__default_values = self.__import_default_values(
+            config=empty_config,
+            default_values=default_values
+        )
+
+       ###########################################################################
+
+        if config is None:
+            self.config = empty_config
+        else:
+            self.config = config
+
+    @staticmethod
+    def __generate_description_prefix():
+        """
+        Generates random strings used to make descriptions within internal data structure unique.
+
+        Returns:
+          string: Random text
+        """
+        return f'__syc_description_prefix__{uuid.uuid4()}'
+
+    @property
+    def config(self):
+        """ Returns config object """
+        return self.__config
+
+    @config.setter
+    def config(self, config):
+        """ Set config object """
+        # Import default values into config
+        self.__config = self.__import_default_values(config, self.__default_values)
+
+    # Methods related to validation
+
+    @property
+    def is_valid(self):
+        """
+        Returns true if config is valid
+
+        Returns:
+          bool: True if string is valid, false otherwise
+        """
+        return self.validator.is_valid(self.config)
+
+    @property
+    def validation_errors(self):
+        """
+        Yields validation errors
+
+        Returns:
+          geneator: Collection of jsonschema.exceptions.ValidationError
+        """
+        # Look for errors
+        yield self.validator.iter_errors(self.config)
+
+    def validate(self):
+        """
+        Raises errors if validation fails
+
+        Raises:
+            SyntaxError: Text representation of the validation errors
+        """
+        def walk_path(config, path):
+            try:
+                item = path.popleft()
+                return walk_path(config[item], path)
+            except IndexError:
+                return config
+
+        error = best_match(self.validator.iter_errors(self.config))
+
+        if error:
+            path = "Unknown"
+            if error.path is not None:
+                path = '/' + '/'.join([str(item) for item in error.relative_path])
+                malformed_object = walk_path(self.config,  error.relative_path)
+            elif error.parent is not None and error.parent.path is not None:
+                path = '/' + '/'.join([str(item) for item in error.parent.relative_path])
+                malformed_object = walk_path(self.config,  error.parent.relative_path)
+
+            raise SyntaxError(f"""
+Error while parsing configuration file.
+  Message: {error.message}
+  Path: {path}
+  Malformed obect: {malformed_object}
+            """)
+
+    ### TOML methods ###
+
+    @staticmethod
+    def __render_toml(data):
+        """ Returns rendered config object in TOML format
+
+        Args:
+            data: iterable
+
+        Returns:
+            str: rendered text
+        """
+
+        text = toml.dumps(data)
+
+        # Handle descriptions
+        lines = []
+        for line in text.splitlines():
+            new_line = re.sub(
+                r"- __syc_description_prefix__\S+ = '(.*)'", r"  # \1", line
+            )
+            if new_line != line:
+                lines.append(new_line)
+                continue
+
+            new_line = re.sub(
+                r"- __syc_description_prefix__\S+ = (.*)", r"  # \1", line
+            )
+            if new_line != line:
+                lines.append(new_line)
+                continue
+
+            new_line = re.sub(
+                r"- __syc_description_prefix__\S+ (.+)", r"# \1", line
+            )
+            if new_line != line:
+                lines.append(new_line)
+                continue
+
+            new_line = re.sub(
+                r"__syc_description_prefix__\S+ = '(.*)'", r"# \1", line
+            )
+            if new_line != line:
+                lines.append(new_line)
+                continue
+
+            new_line = re.sub(
+                r"__syc_description_prefix__\S+ = (.*)", r"# \1", line
+            )
+            if new_line != line:
+                lines.append(new_line)
+                continue
+
+            lines.append(line)
+
+        return '\n'.join(lines) + '\n'
+
+    def from_toml(self, text):
+        """
+        Reads and parse configuation by assuming it is formatted as TOML
+
+        Parameters:
+        ----------
+            text: Configuration text in TOML format
+        """
+        self.config = toml.loads(text)
+
+    def to_toml(self):
+        """ Returns rendered config object in TOML format """
+        return self.__render_toml(self.config)
+
+    def from_toml_file(self, filename):
+        """
+        Reads from a file and parse configuration by assuming it is formatted as TOML
+
+        Parameters:
+        ----------
+            filename: Nome of the TOML file containting configuration
+        """
+        with open(filename, encoding="utf-8") as stream:
+            self.from_toml(stream.read())
+
+    def to_toml_file(self, filename):
+        """
+        Write configuration in TOML format to a file
+
+        Parameters:
+        ----------
+            filename: Name of the TOML file to write configuration on
+        """
+        with open(filename, 'w', encoding="utf-8") as stream:
+            stream.write(self.to_toml())
+
+    ### YAML methods ###
+
+    @staticmethod
+    def __render_yaml(data):
+        """ Returns rendered config object in YAML format
+
+        Args:
+            data: iterable
+
+        Returns:
+            str: rendered text
+        """
+
+        text = yaml.dump(
+            data,
+            default_flow_style=False,
+            sort_keys=False,
+            width=9999,
+            Dumper=NoAliasDumper
+        )
+
+        # Handle descriptions
+        lines = []
+        for line in text.splitlines():
+            new_line = re.sub(
+                r"- __syc_description_prefix__\S+: '(.*)'", r"  # \1", line
+            )
+            if new_line != line:
+                lines.append(new_line)
+                continue
+
+            new_line = re.sub(
+                r"- __syc_description_prefix__\S+: (.*)", r"  # \1", line
+            )
+            if new_line != line:
+                lines.append(new_line)
+                continue
+
+            new_line = re.sub(
+                r"- __syc_description_prefix__\S+ (.+)", r"# \1", line
+            )
+            if new_line != line:
+                lines.append(new_line)
+                continue
+
+            new_line = re.sub(
+                r"__syc_description_prefix__\S+: '(.*)'", r"# \1", line
+            )
+            if new_line != line:
+                lines.append(new_line)
+                continue
+
+            new_line = re.sub(
+                r"__syc_description_prefix__\S+: (.*)", r"# \1", line
+            )
+            if new_line != line:
+                lines.append(new_line)
+                continue
+
+            lines.append(line)
+
+        return '\n'.join(lines) + '\n'
+
+    def from_yaml(self, text):
+        """
+        Reads and parse configuation by assuming it is formatted as YAML
+
+        Parameters:
+        ----------
+            text: Configuration text in YAML format
+        """
+        self.config = yaml.load(text, Loader=yaml.FullLoader) or {}
+
+    def to_yaml(self):
+        """ Returns rendered config object in YAML format """
+        return self.__render_yaml(self.config)
+
+    def from_yaml_file(self, filename):
+        """
+        Reads from a file and parse configuration by assuming it is formatted as YAML
+
+        Parameters:
+        ----------
+            filename: Nome of the YAML file containting configuration
+        """
+        with open(filename, encoding="utf-8") as stream:
+            self.from_yaml(stream.read())
+
+    def to_yaml_file(self, filename):
+        """
+        Write configuration in YAML format to a file
+
+        Parameters:
+        ----------
+            filename: Name of the YAML file to write configuration on
+        """
+        with open(filename, 'w', encoding="utf-8") as stream:
+            stream.write(self.to_yaml())
+
+    ### Methods related to default values ###
+
+    def default_values(self):
+        """ Returns default configuration as specified by the schema """
+        return self.__default_values
+
+    def default_config_to_yaml(self):
+        """ Returns default configuration as specified by the schema formatted as YAML """
+        return self.__render_yaml(self.__default_config)
+
+    def default_config_to_toml(self):
+        """ Returns default configuration as specified by the schema formatted as TOML """
+        return self.__render_toml(self.__default_config)
+
+    def __get_default_values(self, schema, with_description=False):
+        """
+        Gets default values from the schema
+
+        Parameters:
+        -----------
+            schema: dict
+                Dictionary containing the json schema
+            with_description: bool
+                Wether or not include description from the schema (default: False)
+        Returns:
+        --------
+            mixed: Default values
+        """
+        # Get defaults from template
+        try:
+            default_values = schema['default']
+        except KeyError:
+            default_values = self.__make_default_values(
+                schema,
+                with_description
             )
 
-        return result
+        # Default can be OrderedDict or list.
+        # In that case have to insert description
+        if isinstance(default_values, (dict, OrderedDict)):
+            if with_description and 'description' in schema:
+                description_key = self.__generate_description_prefix()
+                default_values[description_key] = schema['description']
+                default_values.move_to_end(description_key, False)
+        elif isinstance(default_values, list):
+            if with_description and 'description' in schema:
+                description_key = self.__generate_description_prefix()
+                default_values = [f"{description_key} {schema['description']}"] + default_values
 
-    # If user defined default is not there, then create one
-    _schema = deepcopy(schema)
-    if 'default' in _schema:
-        default = _schema['default']
-    else:
-        default = make_default(_schema, with_description)
+        return default_values
 
-    # Import default and descriptions into result
-    if isinstance(default, OrderedDict):
-        result = OrderedDict()
-        if with_description and 'description' in _schema:
-            description_key = get_description_key()
-            result[description_key] = _schema['description']
-        for key, value in default.items():
-            result[key] = value
-    elif isinstance(default, list):
-        result = default
-        if with_description and 'description' in _schema:
-            description_key = get_description_key()
-            result = ["%s %s" % (description_key, _schema['description'])] + result
-    else:
-        result = default
+    def __make_default_values(self, schema, with_description=False):
+        """
+        Parses schema and returns default values
 
-    return result
+        Parameters:
+        -----------
+        schema: dict
+            Dictionary containing the json schema
+        with_description: bool
+            Wether or not include description from the schema (default: False)
 
+        Returns:
+        --------
+            mixed: Default values
+        """
 
-def render_yaml(config):
-    """ Returns rendered config object in YAML format Args:
-        config: config object
-    Returns:
-        str: rendered text
-    """
+        if 'type' not in schema:
+            raise SyntaxError(
+f"""Error while parsing schema file.
+Message: "type" keywords missing
+Schema: {self.__render_yaml(schema)}"""
+            )
 
-    text = yaml.dump(
-        config,
-        default_flow_style=False,
-        sort_keys=False,
-        width=9999,
-        Dumper=NoAliasDumper
-    )
+        # Parse objects
+        if schema['type'] == 'object':
+            default_values = OrderedDict()
 
-    # Handle descriptions
-    lines = list()
-    for line in text.splitlines():
-        new_line = re.sub(
-            r"- __syc_description_prefix__\S+: '(.*)'", r"  # \1", line
-        )
-        if new_line != line:
-            lines.append(new_line)
-            continue
+            # Find all properties and patternPriorities
+            try:
+                properties = list(schema['properties'].items())
+            except KeyError:
+                properties = []
+            try:
+                for pattern, value in schema['patternProperties'].items():
+                    # Compile regex so that we can use it later
+                    pattern = re.compile(pattern)
+                    properties.append([pattern, value])
+            except KeyError:
+                pass
 
-        new_line = re.sub(
-            r"- __syc_description_prefix__\S+: (.*)", r"  # \1", line
-        )
-        if new_line != line:
-            lines.append(new_line)
-            continue
+            # Loop over properties
+            for _property, subschema in properties:
+                # Import description
+                if with_description:
+                    try:
+                        description_key = self.__generate_description_prefix()
+                        default_values[description_key] = subschema['description']
+                        default_values.move_to_end(description_key, False)
+                    except (TypeError, KeyError):
+                        pass
 
-        new_line = re.sub(
-            r"- __syc_description_prefix__\S+ (.+)", r"# \1", line
-        )
-        if new_line != line:
-            lines.append(new_line)
-            continue
+                # Value might have children, so we run get_defaults over value
+                try:
+                    default_values[_property] = self.__get_default_values(
+                        subschema, with_description
+                    )
+                except SyntaxError:
+                    # No default value was found, thus we skip the key
+                    pass
 
-        new_line = re.sub(
-            r"__syc_description_prefix__\S+: '(.*)'", r"# \1", line
-        )
-        if new_line != line:
-            lines.append(new_line)
-            continue
+            return default_values
 
-        new_line = re.sub(
-            r"__syc_description_prefix__\S+: (.*)", r"# \1", line
-        )
-        if new_line != line:
-            lines.append(new_line)
-            continue
+        # Parse arrays
+        if schema['type'] == 'array':
+            # Value might have children, so we run get_defaults over value
+            default_values = [self.__get_default_values(schema['items'], with_description)]
 
-        lines.append(line)
-    text = '\n'.join(lines) + '\n'
-    return text
+            # Try to put description at the top of the list
+            if with_description and 'description' in schema['items']:
+                description_key = self.__generate_description_prefix()
+                default_values = [
+                    f"{description_key} {schema['items']['description']}"
+                ] + default_values
 
+            return default_values
 
-def render_toml(config):
-    """ Returns rendered config object in TOML format Args:
-        config: config object
-    Returns:
-        str: rendered text
-    """
+        # Fallback for all of the other objects
+        try:
+            default_values = schema['default']
+        except (TypeError, KeyError) as error:
+            raise SyntaxError(
+f"""Error unable to infer default config.
+Message: "default" keyword missing
+Schema: {self.__render_yaml(self.schema)}"""
+            ) from error
 
-    text = yaml.dumps(config)
-
-    # Handle descriptions
-    lines = list()
-    for line in text.splitlines():
-        new_line = re.sub(
-            r"- __syc_description_prefix__\S+ = '(.*)'", r"  # \1", line
-        )
-        if new_line != line:
-            lines.append(new_line)
-            continue
-
-        new_line = re.sub(
-            r"- __syc_description_prefix__\S+ = (.*)", r"  # \1", line
-        )
-        if new_line != line:
-            lines.append(new_line)
-            continue
-
-        new_line = re.sub(
-            r"- __syc_description_prefix__\S+ (.+)", r"# \1", line
-        )
-        if new_line != line:
-            lines.append(new_line)
-            continue
-
-        new_line = re.sub(
-            r"__syc_description_prefix__\S+ = '(.*)'", r"# \1", line
-        )
-        if new_line != line:
-            lines.append(new_line)
-            continue
-
-        new_line = re.sub(
-            r"__syc_description_prefix__\S+ = (.*)", r"# \1", line
-        )
-        if new_line != line:
-            lines.append(new_line)
-            continue
-
-        lines.append(line)
-    text = '\n'.join(lines) + '\n'
-    return text
+        return default_values
 
 
-def updatedict(original, updates):
-    """
-    Updates the original dictionary with items in updates.
-    If key already exists it overwrites the values else it creates it
-    Args:
-        original: original dictionary
-        updates: items to be inserted in the dictionary
-    Returns:
-        dict: updated dictionary
-    """
-    for key, value in updates.items():
-        if key not in original or type(value) != type(original[key]):
-            original[key] = value
-        elif isinstance(value, dict):
-            original[key] = updatedict(original[key], value)
-        else:
-            original[key] = value
+    def __import_default_values(self, config, default_values):
+        """
+        Imports default values into config
 
-    return original
+        Parameters:
+        -----------
+        config: mixed
+            Configuration to import values into. Can be either list or dict
+        default_values: mixed
+            Default values to be imported into configuration. Can be either list or dict
 
+        Returns:
+        --------
+            mixed: Config with default values imported
+        """
 
-def keys_to_lower(item):
-    """
-    Normalize dict keys to lowercase.
-    Args:
-        dict: dict to be normalized
-    Returns:
-        Normalized dict
-    """
-    result = False
-    if isinstance(item, list):
-        result = [keys_to_lower(v) for v in item]
-    elif isinstance(item, dict):
-        result = dict((k.lower(), keys_to_lower(v)) for k, v in item.items())
-    else:
-        result = item
+        # Remove patternPriorities keys from default
+        def remove_patterns(tree):
+            if not isinstance(tree, (dict, OrderedDict)):
+                return tree
 
-    return result
+            clean_tree = OrderedDict()
+            for key, value in tree.items():
+                if isinstance(key, re.Pattern):
+                    continue
+                if isinstance(value, (dict, OrderedDict)):
+                    value = remove_patterns(value)
+                clean_tree[key] = value
+
+            return clean_tree
+
+        # Handle dicts
+        if isinstance(config, (dict, OrderedDict)):
+            # Recursively import defaults into existing keys
+            for key, value in config.items():
+                if isinstance(key, re.Pattern):
+                    continue
+                config[key] = self.__import_default_values(
+                    value, default_values[key]
+                )
+
+            # Recursively import defaults into keys that match with patterns (patternPriorities)
+            for pattern, default_value in default_values.items():
+                if not isinstance(pattern, re.Pattern):
+                    continue
+                for key, value in config.items():
+                    if pattern.match(key):
+                        config[key] = self.__import_default_values(
+                            value, default_value[key]
+                        )
+
+            # Import missing keys
+            for key, default_value in default_values.items():
+                # Skip existing keys
+                if key in config:
+                    continue
+
+                # Skip patterns (patternPriorities)
+                if isinstance(key, re.Pattern):
+                    continue
+
+                default_value = remove_patterns(default_value)
+
+                if isinstance(default_value, (dict, OrderedDict)):
+                    empty_config = OrderedDict()
+                elif isinstance(default_value, list):
+                    empty_config = []
+                else:
+                    empty_config = None
+
+                config[key] = self.__import_default_values(empty_config, default_value)
+
+            return config
+
+        # Handle lists
+        if isinstance(config, list):
+            for index, item in enumerate(config):
+                item = self.__import_default_values(item, default_values[index])
+
+            return config
+
+        # Fallback for everything else
+        return default_values
 
 
 def get_config(
         configuration_filename='config.yml',
         schema_filename='config_schema.yml',
         create_default=True,
-        lower_keys=True,
         language='yaml'
     ):
     """
-    Gets default config and overwrite it with the content of configuration_filename.
-    If the file does not exist, it creates it.
-    Default config is generated by applying get_defaults() to local file named configuration.yaml .
-    Content of configuration_filename by assuming the content is formatted in YAML.
-    Args:
-        configuration_filename: name of the YAML configuration file
-        schema_filename: name of the JSONSchema file
-        create_default: create default filename if missing
-        lower_keys: transform keys to uppercase
-        language: Markup language of the file (either 'YAML' or 'TOML')
-    Returns:
-        dict: configuration statements
+    Reproduces schemed_yaml_config v0.x behavior by reading config and schema from files.
+
+    Parameters:
+    -----------
+    configuration_filename: string
+        Path to the filename containing configuration settings (default: config.yml)
+    schema_filename: string
+        Path to the filename containing jsonschema formatted in YAML (default: config_schema.yml)
+    create_default: bool
+        If set to true and configuration_filename is missing, then fill it with default settings.
+        (default: True)
+    language: string
+        Defines the language the content of configuration_filename is formatted with.
+        Can be either 'yaml' or 'toml'. (default: yaml)
     """
 
-    _ = str(language).upper()
-    if _ not in ['YAML', 'TOML']:
-        raise SyntaxError('Unsupported markup language: %s' % _)
-    language = _
+    if language.lower() not in ['yaml', 'toml']:
+        raise RuntimeError(f'Unsupported language: {language}')
+    language = language.lower()
 
-    with open(schema_filename) as stream:
-        try:
-            configschema = yaml.load(stream, Loader=yamlordereddictloader.Loader)
-        except (yaml.scanner.ScannerError) as error:
-            raise SyntaxError('Error while parsing configuration file: %s' % error) from error
-    validator = Draft7Validator(configschema)
+    config = Config(schema_filename)
 
-    if os.path.exists(configuration_filename):
-        with open(configuration_filename, 'r') as stream:
-            if language == "YAML":
-                config = yaml.load(stream, Loader=yaml.FullLoader) or {}
-            else:
-                config = toml.load(stream)
-
-            def import_defaults(config, defaults):
-                if isinstance(config, dict):
-                    # Recursively import defaults into existing keys
-                    for key, value in config.items():
-                        try:
-                            config[key] = import_defaults(value, defaults[key])
-                        except (KeyError, TypeError):
-                            pass
-
-                    if isinstance(defaults, OrderedDict):
-                        # Recursively import defaults into keys that match with patterns
-                        for pattern, default in defaults.items():
-                            if not isinstance(pattern, re.Pattern):
-                                continue
-                            for key, value in config.items():
-                                if pattern.match(key):
-                                    config[key] = import_defaults(value, default)
-
-                        # Import missing keys
-                        for key, default in defaults.items():
-                            # Skip existing keys
-                            if key in config:
-                                continue
-                            # Skip patterns
-                            if isinstance(key, re.Pattern):
-                                continue
-
-                            # Always import list as emtpy lists
-                            if isinstance(default, list):
-                                default = []
-
-                            # Remove patternPriorities keys from default
-                            def remove_patterns(tree):
-                                if not isinstance(tree, OrderedDict):
-                                    return tree
-
-                                clean_tree = OrderedDict()
-                                for _key, _val in tree.items():
-                                    if isinstance(_key, re.Pattern):
-                                        continue
-                                    if isinstance(_val, OrderedDict):
-                                        _val = remove_patterns(_val)
-                                    clean_tree[_key] = _val
-                                return clean_tree
-
-                            config[key] = remove_patterns(default)
-
-                elif isinstance(config, list):
-                    try:
-                        config = [
-                            import_defaults(item, next(iter(defaults)))
-                            for item in config
-                        ]
-                    except StopIteration:
-                        pass
-
-                return config
-
-            # Get default values
-            defaults = get_defaults(configschema)
-
-            # Import default values into config
-            config = import_defaults(config, defaults)
-    elif create_default:
-        # Read defaults and include descriptions
-        config = get_defaults(configschema, True)
-         # Dump config to file
-        write_config(config, configuration_filename)
-        # Re-read defaults, this time do not include descriptions
-        config = get_defaults(configschema, False)
-
-    # Turn keys to lowercase if requested
-    if lower_keys:
-        config = keys_to_lower(config)
-
-    # Look for errors
-    error = best_match(validator.iter_errors(config))
-    if error:
-        path = "Unknown"
-        if error.path is not None:
-            path = '/' + '/'.join([str(_) for _ in error.relative_path])
-        elif error.parent is not None and error.parent.path is not None:
-            path = '/' + '/'.join([str(_) for _ in error.parent.relative_path])
-
-        raise SyntaxError(
-            'Error while parsing configuration file.\n  Message: %s\n  Path: %s' % (
-                error.message, path
-            )
-        )
-
-    # Return config
-    return config
-
-
-def read_config(*args, **kwargs):
-    """Alias of get_config()"""
-    return get_config(*args, **kwargs)
-
-
-def write_config(
-        config,
-        configuration_filename='config.yml',
-        language='yaml'
-    ):
-    """
-    Writes config to configuration_filename. If the file does not exist, it creates it.
-    Config can be validated before of being written.
-    Args:
-        config: config object
-        configuration_filename: name of the YAML configuration file (Default: config.yml)
-        create_default: create default filename if missing
-        language: Markup language of the file (either 'YAML' or 'TOML')
-    """
-
-    if language.lower() == 'yaml':
-        text = render_yaml(config)
-    elif language.lower() == 'toml':
-        text = render_toml(config)
-    else:
-        raise RuntimeError('Unsupported language: %s' % language)
-
-    # Dump config to file
     try:
-        with open(configuration_filename, 'w') as stream:
-            stream.write(text)
-    except IOError as error:
-        raise IOError(
-            'Unable to create configuration file: %s' % configuration_filename
-        ) from error
+        if language == 'yaml':
+            config.from_yaml_file(configuration_filename)
+        else:
+            config.from_toml_file(configuration_filename)
+    except FileNotFoundError:
+        if create_default:
+            try:
+                if language == 'yaml':
+                    with open(configuration_filename, "w", encoding="utf-8") as file:
+                        file.write(config.default_config_to_yaml())
+                else:
+                    with open(configuration_filename, "w", encoding="utf-8") as file:
+                        file.write(config.default_config_to_toml())
+            except (PermissionError, OSError) as error:
+                raise RuntimeError(f'Unable to create configuration file: {error}') from error
+
+    return config

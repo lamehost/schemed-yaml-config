@@ -1,6 +1,6 @@
 # MIT License
 
-# Copyright (c) 2019, Marco Marzetti <marco@lamehost.it>
+# Copyright (c) 2021, Marco Marzetti <marco@lamehost.it>
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -35,14 +35,9 @@ Example:
 >>>
 """
 
-from __future__ import absolute_import
-
 from .schemed_yaml_config import (
-    get_config,
-    read_config,
-    write_config,
-    render_yaml,
-    render_toml
+    Config,
+    get_config
 )
 
 from .__about__ import (
