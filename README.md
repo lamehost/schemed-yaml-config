@@ -1,12 +1,15 @@
 # Schemed YAML Config
 Schemed YAML Config is a library to read and validate [YAML](https://yaml.org/) based configuration files against [JSON Schema](https://json-schema.org/) specifications.  
 
+# Branches
+The project is transitioning from v0.x to v1.x and master branch is used to develop the latter.  
+There's significant changes between v0.x and v1.x. And, while new user are encouraged to look into v1.x, that might be troublesome for those who have developed code around v0.x
+
 # Install
 Schemed-yaml-config can be installed via PIP
 ```
 # pip install schemed-yaml-config
 ```
-
 # Under the hood
 Schemed YAML Config works by converting YAML files into a dictionarie by mean of the well known [PyYAML framework](https://pyyaml.org/) and then by applying JSON Schema specifications before of returning it to rest of the script.  
 The beauty of this approach is it combines the human friendly serialization of YAML with the power of JSON Schema.
@@ -29,4 +32,4 @@ Type "help", "copyright", "credits" or "license" for more information.
 ```
 
 # TOML
-Despite its name Schemed YAML Config also supports [TOML](https://toml.io/en/) configuration files as experimental feature since [v0.1.0](https://github.com/lamehost/schemed-yaml-config/releases/tag/v0.1.0). TOML schemas are not supported yet!
+Despite its name Schemed YAML Config also supports [TOML](https://toml.io/en/). TOML schemas are not supported yet!
