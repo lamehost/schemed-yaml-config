@@ -71,7 +71,7 @@ class Config():
                     for key in schema_subtree.split('/'):
                         self.schema = self.schema[key]
             except (yaml.scanner.ScannerError) as error:
-                raise SyntaxError(f'Error while parsing configuration file: {error}') from error
+                raise RuntimeError(f'Error while parsing configuration file: {error}') from error
         self.validator = Draft7Validator(self.schema)
 
         ### I hate this hack and i should find a more elegant way to handle it ###
@@ -87,13 +87,15 @@ class Config():
         default_values = self.__get_default_values(self.schema,  with_description=True)
         self.__default_config = self.__import_default_values(
             config=deepcopy(empty_config),
-            default_values=default_values
+            default_values=default_values,
+            populate_arrays=True
         )
 
         default_values = self.__get_default_values(self.schema,  with_description=False)
         self.__default_values = self.__import_default_values(
             config=deepcopy(empty_config),
-            default_values=default_values
+            default_values=default_values,
+            populate_arrays=True
         )
 
         if config is None:
@@ -123,7 +125,9 @@ class Config():
     def config(self, config):
         """ Set config object """
         # Import default values into config
-        self.__config = self.__import_default_values(config, self.__default_values)
+        self.__config = self.__import_default_values(
+            config, self.__default_values, populate_arrays=False
+        )
 
     # Methods related to validation
 
@@ -153,7 +157,7 @@ class Config():
         Raises errors if validation fails
 
         Raises:
-            SyntaxError: Text representation of the validation errors
+            RuntimeError: Text representation of the validation errors
         """
         def walk_path(config, path):
             try:
@@ -173,11 +177,11 @@ class Config():
                 path = '/' + '/'.join([str(item) for item in error.parent.relative_path])
                 malformed_object = walk_path(self.config,  error.parent.relative_path)
 
-            raise SyntaxError(f"""
+            raise RuntimeError(f"""
 Error while parsing configuration file.
   Message: {error.message}
   Path: {path}
-  Malformed obect: {malformed_object}
+  Malformed object: {malformed_object}
             """)
 
     ### TOML methods ###
@@ -438,10 +442,9 @@ Error while parsing configuration file.
         --------
             mixed: Default values
         """
-
         if 'type' not in schema:
-            raise SyntaxError(
-f"""Error while parsing schema file.
+            raise RuntimeError(
+f"""Unable to infer default value from schema.
 Message: "type" keywords missing
 Schema: {self.__render_yaml(schema)}"""
             )
@@ -463,6 +466,13 @@ Schema: {self.__render_yaml(schema)}"""
             except KeyError:
                 pass
 
+            if not properties:
+                raise RuntimeError(
+f"""Error while parsing schema file.
+Message: Both "properties" and "patternPriorities" missing
+Schema {self.__render_yaml(schema)}"""
+)
+
             # Loop over properties
             for _property, subschema in properties:
                 # Import description
@@ -474,13 +484,9 @@ Schema: {self.__render_yaml(schema)}"""
                         pass
 
                 # Value might have children, so we run get_defaults over value
-                try:
-                    default_values[_property] = self.__get_default_values(
-                        subschema, with_description
-                    )
-                except SyntaxError:
-                    # No default value was found, thus we skip the key
-                    pass
+                default_values[_property] = self.__get_default_values(
+                    subschema, with_description
+                )
 
             return default_values
 
@@ -501,17 +507,18 @@ Schema: {self.__render_yaml(schema)}"""
         # Fallback for all of the other objects
         try:
             default_values = schema['default']
-        except (TypeError, KeyError) as error:
-            raise SyntaxError(
-f"""Error unable to infer default config.
-Message: "default" keyword missing
-Schema: {self.__render_yaml(self.schema)}"""
-            ) from error
+        except (TypeError, KeyError):
+#             raise RuntimeError(
+# f"""Error unable to infer default config.
+# Message: "default" keyword missing
+# Schema: {self.__render_yaml(schema)}"""
+#             ) from error
+            default_values = None
 
         return default_values
 
 
-    def __import_default_values(self, config, default_values):
+    def __import_default_values(self, config, default_values, populate_arrays=False):
         """
         Imports default values into config
 
@@ -521,6 +528,8 @@ Schema: {self.__render_yaml(self.schema)}"""
             Configuration to import values into. Can be either list or dict
         default_values: mixed
             Default values to be imported into configuration. Can be either list or dict
+        populate_arrays: bool
+            Forces function to populate empty arrays
 
         Returns:
         --------
@@ -548,9 +557,13 @@ Schema: {self.__render_yaml(self.schema)}"""
             for key, value in config.items():
                 if isinstance(key, re.Pattern):
                     continue
-                config[key] = self.__import_default_values(
-                    value, default_values[key]
-                )
+                try:
+                    config[key] = self.__import_default_values(
+                        value, default_values[key], populate_arrays
+                    )
+                except KeyError:
+                    # Unexpected keys
+                    continue
 
             # Recursively import defaults into keys that match with patterns (patternPriorities)
             for pattern, default_value in default_values.items():
@@ -558,8 +571,9 @@ Schema: {self.__render_yaml(self.schema)}"""
                     continue
                 for key, value in config.items():
                     if pattern.match(key):
+                        # Import default_value into value
                         config[key] = self.__import_default_values(
-                            value, default_value[key]
+                            value, default_value, populate_arrays
                         )
 
             # Import missing keys
@@ -581,19 +595,42 @@ Schema: {self.__render_yaml(self.schema)}"""
                 else:
                     empty_config = None
 
-                config[key] = self.__import_default_values(empty_config, default_value)
+                config[key] = self.__import_default_values(
+                    empty_config, default_value, populate_arrays
+                )
 
             return config
 
         # Handle lists
         if isinstance(config, list):
-            for index, item in enumerate(config):
-                item = self.__import_default_values(item, default_values[index])
+            try:
+                item = next(iter(config))
+            except StopIteration:
+                item = None
+
+            try:
+                default_value = next(iter(default_values))
+            except StopIteration:
+                if isinstance(item, (dict, OrderedDict)):
+                    default_value = OrderedDict()
+                elif isinstance(item, list):
+                    default_value = []
+                else:
+                    default_value = None
+
+            for item in config:
+                item = self.__import_default_values(item, default_value, populate_arrays)
+
+            if populate_arrays:
+                config = [self.__import_default_values(item, default_value, populate_arrays)]
 
             return config
 
         # Fallback for everything else
-        return default_values
+        if config is None:
+            return default_values
+
+        return config
 
 
 def get_config(

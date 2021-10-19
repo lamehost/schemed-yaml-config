@@ -73,7 +73,7 @@ def main():
                 text = config.default_config_to_toml()
         else:
             text = ""
-    except SyntaxError as error:
+    except RuntimeError as error:
         text = error
 
     print(text)
