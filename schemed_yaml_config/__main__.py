@@ -26,6 +26,7 @@
 
 
 import argparse
+import sys
 
 from schemed_yaml_config import get_config
 
@@ -45,6 +46,12 @@ def main():
       help='Name of the file containing the schema'
     )
     parser.add_argument(
+      '-n', '--no-validate',
+      action='store_true',
+      default=False,
+      help='Disable validation'
+    )
+    parser.add_argument(
       'schema',
       metavar='SCHEMA',
       type=str,
@@ -58,23 +65,27 @@ def main():
     )
 
     args = parser.parse_args()
-    try:
-        config = get_config(args.config, args.schema, language=args.language)
-        config.validate()
-        if args.language == 'yaml':
-            if config.config:
-                text = config.to_yaml()
-            else:
-                text = config.default_config_to_yaml()
-        elif args.language == 'toml':
-            if config.config:
-                text = config.to_toml()
-            else:
-                text = config.default_config_to_toml()
+    config = get_config(args.config, args.schema, language=args.language)
+
+    if not args.no_validate:
+        try:
+            config.validate()
+        except RuntimeError as error:
+            print(error)
+            sys.exit(1)
+
+    if args.language == 'yaml':
+        if config.config:
+            text = config.to_yaml()
         else:
-            text = ""
-    except RuntimeError as error:
-        text = error
+            text = config.default_config_to_yaml()
+    elif args.language == 'toml':
+        if config.config:
+            text = config.to_toml()
+        else:
+            text = config.default_config_to_toml()
+    else:
+        text = ""
 
     print(text)
 

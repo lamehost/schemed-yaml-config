@@ -84,6 +84,8 @@ class Config():
         else:
             empty_config = None
 
+        self.__default_tree = self.__get_default_values(self.schema,  with_description=False)
+
         default_values = self.__get_default_values(self.schema,  with_description=True)
         self.__default_config = self.__import_default_values(
             config=deepcopy(empty_config),
@@ -126,7 +128,7 @@ class Config():
         """ Set config object """
         # Import default values into config
         self.__config = self.__import_default_values(
-            config, self.__default_values, populate_arrays=False
+            config, self.__default_tree, populate_arrays=False
         )
 
     # Methods related to validation
