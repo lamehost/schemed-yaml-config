@@ -613,8 +613,9 @@ Schema {self.__render_yaml(schema)}"""
             try:
                 default_value = next(iter(default_values))
                 # First item *could* be description
-                if isinstance(default_value, str) and default_value.startswith('__syc_description_prefix__'):
-                    default_value = default_values[1]
+                if isinstance(default_value, str):
+                    if default_value.startswith('__syc_description_prefix__'):
+                        default_value = default_values[1]
             except (StopIteration, IndexError):
                 if isinstance(item, (dict, OrderedDict)):
                     default_value = OrderedDict()
@@ -626,7 +627,7 @@ Schema {self.__render_yaml(schema)}"""
             for item in config:
                 item = self.__import_default_values(item, default_value, populate_arrays)
 
-            if populate_arrays and default_value != None:
+            if populate_arrays and default_value is not None:
                 config = [self.__import_default_values(item, default_value, populate_arrays)]
 
             return config
