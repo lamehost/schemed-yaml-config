@@ -43,7 +43,7 @@ def main():
       type=str,
       default='yaml',
       choices=['yaml', 'toml'],
-      help='Name of the file containing the schema'
+      help="Either 'yaml' or 'toml'"
     )
     parser.add_argument(
       '-n', '--no-validate',
@@ -61,7 +61,9 @@ def main():
       'config',
       metavar='CONFIG',
       type=str,
-      help='Name of the file schema has to be applied to'
+      nargs='?',
+      default=None,
+      help='Name of the file schema has to be applied on'
     )
 
     args = parser.parse_args()
@@ -75,12 +77,12 @@ def main():
             sys.exit(1)
 
     if args.language == 'yaml':
-        if config.config:
+        if args.config:
             text = config.to_yaml()
         else:
             text = config.default_config_to_yaml()
     elif args.language == 'toml':
-        if config.config:
+        if args.config:
             text = config.to_toml()
         else:
             text = config.default_config_to_toml()

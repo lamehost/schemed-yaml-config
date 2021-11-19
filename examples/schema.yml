@@ -1,7 +1,7 @@
-title: Configuration
 type: object
 properties:
   listen:
+    description: Socket listener
     type: object
     properties: 
       host:
@@ -23,6 +23,7 @@ properties:
       - port
     additionalProperties: False
   tmpdir:
+    description: Temporary directory
     type: string
     default: /tmp/
 required:

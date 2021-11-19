@@ -669,10 +669,11 @@ def get_config(
     config = Config(schema_filename)
 
     try:
-        if language == 'yaml':
-            config.from_yaml_file(configuration_filename)
-        else:
-            config.from_toml_file(configuration_filename)
+        if configuration_filename is not None:
+            if language == 'yaml':
+                config.from_yaml_file(configuration_filename)
+            else:
+                config.from_toml_file(configuration_filename)
     except FileNotFoundError:
         if create_default:
             try:
