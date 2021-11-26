@@ -84,16 +84,24 @@ class Config():
         else:
             empty_config = None
 
-        self.__default_tree = self.__get_default_values(self.schema,  with_description=False)
+        self.__default_tree = self.__get_default_values(
+            self.schema,  with_description=False, with_title=False
+        )
 
-        default_values = self.__get_default_values(self.schema,  with_description=True)
+        default_values = self.__get_default_values(
+            self.schema,  with_description=True, with_title=True
+        )
+        # import json
+        # print(json.dumps(default_values, indent=2))
         self.__default_config = self.__import_default_values(
             config=deepcopy(empty_config),
             default_values=default_values,
             populate_arrays=True
         )
 
-        default_values = self.__get_default_values(self.schema,  with_description=False)
+        default_values = self.__get_default_values(
+            self.schema,  with_description=False, with_title=False
+        )
         self.__default_values = self.__import_default_values(
             config=deepcopy(empty_config),
             default_values=default_values,
@@ -392,7 +400,7 @@ Error while parsing configuration file.
         """ Returns default configuration as specified by the schema formatted as TOML """
         return self.__render_toml(self.__default_config)
 
-    def __get_default_values(self, schema, with_description=False):
+    def __get_default_values(self, schema, with_description=False, with_title=False):
         """
         Gets default values from the schema
 
@@ -402,6 +410,8 @@ Error while parsing configuration file.
                 Dictionary containing the json schema
             with_description: bool
                 Wether or not include description from the schema (default: False)
+            with_title: bool
+                Wether or not include title as description from the schema (default: False)
         Returns:
         --------
             mixed: Default values
@@ -409,27 +419,35 @@ Error while parsing configuration file.
         # Get defaults from template
         try:
             default_values = schema['default']
+
+            # Default can be OrderedDict or list.
+            # In that case have to insert description
+            if isinstance(default_values, (dict, OrderedDict)):
+                if with_description and 'description' in schema:
+                    description_key = self.__generate_description_prefix()
+                    default_values[description_key] = schema['description']
+                    default_values.move_to_end(description_key, False)
+                if with_title and 'title' in schema:
+                    description_key = self.__generate_description_prefix()
+                    default_values[description_key] = schema['title']
+                    default_values.move_to_end(description_key, False)
+            elif isinstance(default_values, list):
+                if with_description and 'description' in schema:
+                    description_key = self.__generate_description_prefix()
+                    default_values = [f"{description_key} {schema['description']}"] + default_values
+                if with_title and 'title' in schema:
+                    description_key = self.__generate_description_prefix()
+                    default_values = [f"{description_key} {schema['title']}"] + default_values
         except KeyError:
             default_values = self.__make_default_values(
                 schema,
-                with_description
+                with_description,
+                with_title
             )
-
-        # Default can be OrderedDict or list.
-        # In that case have to insert description
-        if isinstance(default_values, (dict, OrderedDict)):
-            if with_description and 'description' in schema:
-                description_key = self.__generate_description_prefix()
-                default_values[description_key] = schema['description']
-                default_values.move_to_end(description_key, False)
-        elif isinstance(default_values, list):
-            if with_description and 'description' in schema:
-                description_key = self.__generate_description_prefix()
-                default_values = [f"{description_key} {schema['description']}"] + default_values
 
         return default_values
 
-    def __make_default_values(self, schema, with_description=False):
+    def __make_default_values(self, schema, with_description=False, with_title=False):
         """
         Parses schema and returns default values
 
@@ -439,6 +457,8 @@ Error while parsing configuration file.
             Dictionary containing the json schema
         with_description: bool
             Wether or not include description from the schema (default: False)
+        with_title: bool
+            Wether or not include title from the schema (default: False)
 
         Returns:
         --------
@@ -487,22 +507,24 @@ Schema {self.__render_yaml(schema)}"""
 
                 # Value might have children, so we run get_defaults over value
                 default_values[_property] = self.__get_default_values(
-                    subschema, with_description
+                    subschema, with_description, False
                 )
+
+            if with_title and 'title' in schema:
+                description_key = self.__generate_description_prefix()
+                default_values[description_key] = schema['title']
+                default_values.move_to_end(description_key, False)
 
             return default_values
 
         # Parse arrays
         if schema['type'] == 'array':
             # Value might have children, so we run get_defaults over value
-            default_values = [self.__get_default_values(schema['items'], with_description)]
+            default_values = [self.__get_default_values(schema['items'], with_description, False)]
 
-            # Try to put description at the top of the list
-            if with_description and 'description' in schema['items']:
+            if with_title and 'title' in schema:
                 description_key = self.__generate_description_prefix()
-                default_values = [
-                    f"{description_key} {schema['items']['description']}"
-                ] + default_values
+                default_values = [f"{description_key} {schema['title']}"] + default_values
 
             return default_values
 
@@ -510,11 +532,6 @@ Schema {self.__render_yaml(schema)}"""
         try:
             default_values = schema['default']
         except (TypeError, KeyError):
-#             raise RuntimeError(
-# f"""Error unable to infer default config.
-# Message: "default" keyword missing
-# Schema: {self.__render_yaml(schema)}"""
-#             ) from error
             default_values = None
 
         return default_values
@@ -606,15 +623,17 @@ Schema {self.__render_yaml(schema)}"""
         # Handle lists
         if isinstance(config, list):
             try:
-                item = next(iter(config))
+                default_item = next(iter(config))
             except StopIteration:
-                item = None
+                default_item = None
 
+            description = False
             try:
                 default_value = next(iter(default_values))
                 # First item *could* be description
                 if isinstance(default_value, str):
                     if default_value.startswith('__syc_description_prefix__'):
+                        description = default_value
                         default_value = default_values[1]
             except (StopIteration, IndexError):
                 if isinstance(item, (dict, OrderedDict)):
@@ -627,8 +646,15 @@ Schema {self.__render_yaml(schema)}"""
             for item in config:
                 item = self.__import_default_values(item, default_value, populate_arrays)
 
+            # Populate array with default value
             if populate_arrays and default_value is not None:
-                config = [self.__import_default_values(item, default_value, populate_arrays)]
+                config = [self.__import_default_values(
+                    default_item, default_value, populate_arrays)
+                ]
+
+            # Add description
+            if description:
+                config = [description] + config
 
             return config
 
