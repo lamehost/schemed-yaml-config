@@ -35,15 +35,20 @@ def main():
     """CLI entrypoint function for the package"""
 
     parser = argparse.ArgumentParser(
-      description='Process some integers.'
+      description="""
+Library to parse and validate YAML and TOML configuration files against JSON Schema specifications.
+The CONFIG argument is optional. In case it's not specified default configuration is returned
+
+""",
+      formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
       '-l', '--language',
       metavar='LANGUAGE',
-      type=str,
-      default='yaml',
-      choices=['yaml', 'toml'],
-      help="Either 'yaml' or 'toml'"
+      type=lambda string : string.upper(),
+      default='YAML',
+      choices=['YAML', 'TOML'],
+      help="Either 'YAML' or 'TOML'"
     )
     parser.add_argument(
       '-n', '--no-validate',
@@ -63,7 +68,7 @@ def main():
       type=str,
       nargs='?',
       default=None,
-      help='Name of the file schema has to be applied on'
+      help='Name of the file schema has to be applied on.'
     )
 
     args = parser.parse_args()
@@ -76,12 +81,12 @@ def main():
             print(error)
             sys.exit(1)
 
-    if args.language == 'yaml':
+    if args.language == 'YAML':
         if args.config:
             text = config.to_yaml()
         else:
             text = config.default_config_to_yaml()
-    elif args.language == 'toml':
+    elif args.language == 'TOML':
         if args.config:
             text = config.to_toml()
         else:
