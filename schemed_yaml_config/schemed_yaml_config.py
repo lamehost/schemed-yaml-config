@@ -207,7 +207,7 @@ Error while parsing configuration file.
             str: rendered text
         """
 
-        text = toml.dumps(data)
+        text = toml.dumps(data, encoder=toml.ordered.TomlOrderedEncoder())
 
         # Handle descriptions
         lines = []
@@ -535,7 +535,6 @@ Schema {self.__render_yaml(schema)}"""
             default_values = None
 
         return default_values
-
 
     def __import_default_values(self, config, default_values, populate_arrays=False):
         """
