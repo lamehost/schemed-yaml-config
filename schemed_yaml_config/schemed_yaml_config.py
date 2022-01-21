@@ -125,7 +125,7 @@ def get_defaults(schema, with_description=False):
                     pass
 
                 # Try to put description at the top of the list
-                if with_description and 'description' in subschema['items']:
+                if with_description and 'description' in subschema:
                     description_key = get_description_key()
                     result = [
                         "%s %s" % (description_key, subschema['items']['description'])
