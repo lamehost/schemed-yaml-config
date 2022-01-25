@@ -26,7 +26,7 @@ Type "help", "copyright", "credits" or "license" for more information.
 >>>
 >>> from schemed_yaml_config import get_config
 >>> config = get_config('config.yml', 'schema.yml')
->>> print(config)
+>>> print(config.config)
 {'listen': {'host': 'localhost', 'port': 8080}, 'tmpdir': '/tmp/'}
 >>>
 ```
